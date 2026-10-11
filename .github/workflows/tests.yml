@@ -1,0 +1,55 @@
+# Runs on every push and pull request: the full test suite on three Python versions,
+# then the synthetic demo. The demo's debug video and Excel file are attached to each run
+# ("Artifacts" at the bottom of the run page), so anyone can see the output without
+# installing anything.
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: System packages (FFmpeg, OpenCV runtime)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg libgl1 libglib2.0-0
+
+      - name: Install (CPU-only PyTorch keeps the download small)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev]"
+
+      - name: Check installation
+        run: gestures doctor
+
+      - name: Tests
+        run: python -m pytest -q
+
+      - name: Demo (synthetic conference, no footage needed)
+        if: matrix.python-version == '3.12'
+        run: gestures demo
+
+      - name: Upload demo output
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-output
+          path: |
+            outputs_demo/results.xlsx
+            outputs_demo/demo_conference/debug.mp4
+            outputs_demo/demo_conference/people.csv
+            outputs_demo/demo_conference/events.csv

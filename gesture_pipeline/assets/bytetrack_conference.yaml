@@ -1,0 +1,9 @@
+# ByteTrack tuned for conference footage: static camera, people mostly still,
+# frequent short occlusions (someone walks in front). Values are in SAMPLED frames.
+tracker_type: bytetrack
+track_high_thresh: 0.3
+track_low_thresh: 0.1
+new_track_thresh: 0.4      # be slow to invent new people
+track_buffer: 120          # keep a lost person alive ~15 s at 8 fps
+match_thresh: 0.8
+fuse_score: true
