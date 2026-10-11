@@ -84,7 +84,7 @@ def probe(path: Path) -> VideoMeta:
     rotation = int(video.get("tags", {}).get("rotate", rotation))
 
     return VideoMeta(
-        path=str(path),
+        path=str(Path(path).resolve()),
         duration_s=round(duration, 3),
         width=int(video.get("width", 0)),
         height=int(video.get("height", 0)),

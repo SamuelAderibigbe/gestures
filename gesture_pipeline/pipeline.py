@@ -19,6 +19,7 @@ from .debug_video import render as render_debug
 from .gestures import detect_events, phase_at
 from .people import assign_people, build_people
 from .scene import detect_screen
+from .speech import SPEECH_COLUMNS, TALK_SUMMARY_COLUMNS, attribute_speech, detect_speech, summarize_talk
 from .config import Config
 from .extractors import build_extractors
 from .frames import FrameSampler
@@ -28,8 +29,8 @@ from .store import LandmarkWriter, read_frames, read_landmarks
 
 log = logging.getLogger(__name__)
 
-STAGES = ["probe", "audio", "extract", "people", "events", "debug"]
-DEFAULT_STAGES = ["probe", "audio", "extract", "people", "events"]  # debug video is opt-in
+STAGES = ["probe", "audio", "speech", "extract", "people", "events", "talk", "debug"]
+DEFAULT_STAGES = ["probe", "audio", "speech", "extract", "people", "events", "talk"]  # debug video is opt-in
 
 
 def discover_videos(inputs: Iterable[str | Path], extensions: list[str]) -> list[Path]:
@@ -96,7 +97,9 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
     fps["people"] = settings_fingerprint({"x": fps["extract"], "p": cfg.people.__dict__, "v": __version__})
     fps["events"] = settings_fingerprint({"x": fps["people"], "e": cfg.events.__dict__,
                                          "p": cfg.events.resolved_params(), "v": __version__})
-    fps["debug"] = settings_fingerprint({"x": fps["events"]})
+    fps["speech"] = settings_fingerprint({"a": fps["audio"], "s": cfg.speech.__dict__, "v": __version__})
+    fps["talk"] = settings_fingerprint({"e": fps["events"], "s": fps["speech"]})
+    fps["debug"] = settings_fingerprint({"x": fps["talk"]})
 
     def run(stage: str, fn) -> None:
         if stage not in stages:
@@ -169,11 +172,38 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
         return {"people": int(len(people)),
                 "roles": people.role.value_counts().to_dict() if len(people) else {}}
 
+    def do_speech():
+        if not cfg.speech.enabled:
+            return {"skipped": "disabled"}
+        if not paths.audio.exists():
+            pd.DataFrame(columns=SPEECH_COLUMNS).to_csv(paths.speech, index=False)
+            return {"skipped": "no audio"}
+        sp = detect_speech(paths.audio, cfg.speech, vid)
+        sp.to_csv(paths.speech, index=False, encoding="utf-8-sig")
+        return {"speech_s": round(float(sp.duration_s.sum()), 1), "segments": int(len(sp))}
+
+    def do_talk():
+        speech = pd.read_csv(paths.speech) if paths.speech.exists() else pd.DataFrame(columns=SPEECH_COLUMNS)
+        pose, mapping, people = load_people()
+        rows = assign_people(pose, mapping)
+        events = pd.read_csv(paths.events) if paths.events.exists() else pd.DataFrame()
+        phases = pd.read_csv(paths.phases) if paths.phases.exists() else pd.DataFrame()
+        visibility = pd.read_csv(paths.visibility) if paths.visibility.exists() else pd.DataFrame()
+        talk = attribute_speech(speech, events, people, phases, rows, cfg.speech, vid)
+        talk.to_csv(paths.talk, index=False, encoding="utf-8-sig")
+        summary = summarize_talk(talk, people, visibility) if len(people) or len(talk) \
+            else pd.DataFrame(columns=TALK_SUMMARY_COLUMNS)
+        summary.to_csv(paths.talk_summary, index=False, encoding="utf-8-sig")
+        att = float(talk[talk.person_id >= 0].duration_s.sum()) if len(talk) else 0.0
+        return {"attributed_s": round(att, 1),
+                "unattributed_s": round(float(talk[talk.person_id < 0].duration_s.sum()) if len(talk) else 0.0, 1)}
+
     def do_debug():
         pose, mapping, people = load_people()
         events = pd.read_csv(paths.events) if paths.events.exists() else None
+        talk = pd.read_csv(paths.talk) if paths.talk.exists() and paths.talk.stat().st_size else None
         render_debug(video, paths.debug_video, pose, mapping, people, cfg.sampling.fps,
-                     cfg.sampling.max_width, start, end, events)
+                     cfg.sampling.max_width, start, end, events, talk=talk)
         return {}
 
     def do_events():
@@ -191,9 +221,11 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
     try:
         run("probe", do_probe)
         run("audio", do_audio)
+        run("speech", do_speech)
         run("extract", do_extract)
         run("people", do_people)
         run("events", do_events)
+        run("talk", do_talk)
         run("debug", do_debug)
     except Exception as exc:
         res.ok = False

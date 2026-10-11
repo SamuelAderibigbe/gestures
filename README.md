@@ -1,11 +1,11 @@
 # Gesture Pipeline
 
-[![tests](https://github.com/OWNER/REPO/actions/workflows/tests.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/tests.yml)
+[![tests](https://github.com/joshuaolusayo/gestures/actions/workflows/tests.yml/badge.svg)](https://github.com/joshuaolusayo/gestures/actions/workflows/tests.yml)
 
 Counts gestures in recorded videos (hand raises, nods, head shakes, gesturing,
-looking down, holding a microphone, standing up) for every person on screen, works
-out who is the **presenter**, the **panel** and the **audience**, and exports
-everything to Excel. Built for Taiwan Stock Exchange investor-conference recordings
+looking down, holding a microphone, standing up) and **talk time** for every person on
+screen, works out who is the **presenter**, the **panel** and the **audience**, and
+exports everything to Excel. Built for Taiwan Stock Exchange investor-conference recordings
 (法人說明會); works on any video with a fixed camera: lectures, meetings, your own recordings.
 
 Runs locally on an ordinary computer. No cloud, no account, and no video ever leaves the machine.
@@ -34,8 +34,9 @@ For each video, and combined across all videos in `outputs/results.xlsx`:
 | 5 | audience | hand_raise | 1 | 3.0 | 1.5 | 0.08 |
 
 *(Rows from the demo's Summary sheet.)* The workbook also has every single event with start and
-end time and confidence, a per-role breakdown, the presentation/Q&A split, everyone detected with
-the reason for their role, and a record of the filters used. Each video also gets a
+end time and confidence, **talk time and speaking turns per person**, a per-role breakdown, the
+presentation/Q&A split, everyone detected with the reason for their role, and a record of the
+filters used. Each video also gets a
 **debug video** like the images above, so every number can be checked by eye.
 
 ## Try it in 5 minutes (no video needed)
@@ -46,14 +47,14 @@ You need **Python 3.10–3.13** and **FFmpeg**.
 # macOS (Homebrew). On Ubuntu: sudo apt install ffmpeg python3-venv
 brew install ffmpeg python@3.12
 
-git clone https://github.com/OWNER/REPO.git gestures
+git clone https://github.com/joshuaolusayo/gestures.git gestures
 cd gestures
 python3.12 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
 gestures doctor                    # checks everything is installed
-python -m pytest                   # 54 automated checks, should end with "passed"
+python -m pytest                   # 81 automated checks, should end with "passed"
 gestures demo --open               # runs a synthetic conference, opens the video + Excel
 ```
 
@@ -72,6 +73,9 @@ gestures run data/raw/                              # a whole folder (resumes if
 gestures run data/raw/ --end 120                    # quick test: first 2 minutes of each
 gestures export                                     # rebuild outputs/results.xlsx
 gestures export --roles panel --phase qa --min-confidence 0.6 --xlsx outputs/panel_qa.xlsx
+
+gestures validate-prepare                           # accuracy check: clips + coding sheet
+gestures validate                                   # ... after a person has filled it in
 ```
 
 The first run downloads the person-detection model (~8 MB). TWSE recordings can be downloaded with
@@ -96,8 +100,11 @@ video → frames (8/s) → people found, tracked and given 17 body points (YOLO2
    pictures of people on the slides are ignored. The reason is written next to every role.
 3. **Gestures.** Explicit, documented rules on the body points, scaled to each person's size.
    Example: *hand raise = a wrist above the top of the head, elbow lifted, for at least 1 second*.
-4. **Results.** Counts, durations, rates per minute and every individual event, filterable by
-   role, gesture, confidence and part of the video.
+4. **Talk time.** Speech is detected in the audio (Silero VAD) and credited to the person
+   holding a microphone, or to the presenter during the presentation; anything else is
+   reported as unattributed, never guessed. See [docs/talk_time.md](docs/talk_time.md).
+5. **Results.** Counts, durations, rates per minute, talk time and every individual event,
+   filterable by role, gesture, confidence and part of the video.
 
 Everything is explained in plain language in [docs/](docs/README.md): how roles are decided,
 the exact rule for every gesture, filtering, all settings, and how accuracy is checked.
@@ -116,18 +123,21 @@ with a fixed camera, 720p or better, and people at least ~80 px tall.
 * For people seen from behind, small hand movements near the head are deliberately not counted
   (the model has to guess hidden hands).
 * A person who changes place (e.g. presenter → panel table) is counted as two people.
-* Accuracy so far has been checked by eye on clips from six videos; a formal comparison against
-  hand-coded clips is planned ([docs/validation.md](docs/validation.md)).
+* Speech into table-stand microphones can't be credited to a person (no visible cue) and is
+  reported as unattributed; check `speech_attributed_pct` per video.
+* Accuracy so far has been checked by eye on clips from six videos; the formal comparison
+  against hand-coded clips needs people to code clips ([docs/validation.md](docs/validation.md)).
 
 ## Project layout
 
 ```
-gesture_pipeline/   the program (cli, ingest, frames, extractors, people, gestures, export, demo)
+gesture_pipeline/   the program (cli, ingest, frames, extractors, people, gestures, speech, export, demo, validation)
 tests/              automated tests, including a synthetic end-to-end run
 scripts/            TWSE WebPro downloader
 docs/               documentation and README images
 config.yaml         all settings
 data/raw/           your input videos (not in git)
+validation/         accuracy-check clips and coding sheets (not in git)
 outputs/            results, one folder per video (not in git)
 ```
 
@@ -140,8 +150,9 @@ outputs/            results, one folder per video (not in git)
 | Roles: presenter / panel / audience / staff / pictures on slides | done, correct on 12 clips from 6 TWSE videos |
 | 9 gestures, presentation/Q&A split, filtered Excel export, debug videos | done, calibrated on the same clips |
 | Demo + automatic tests on GitHub | done |
-| Talk time per person (speech detection + microphone cue) | planned |
-| Formal accuracy check against hand-coded clips | planned |
+| Talk time per person (speech detection + microphone cue) | done, checked on 12 clips |
+| Accuracy-check tools (coding clips, sheet, report) | done |
+| Formal accuracy check: people coding ~10 clips | waiting for coders ([docs/validation.md](docs/validation.md)) |
 
 ## Data and privacy
 

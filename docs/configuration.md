@@ -56,6 +56,10 @@ re-runs only the stages that depend on it.
 
 Changing any of these re-runs only the events stage (seconds), not the video analysis.
 
+## speech
+See [talk_time.md](talk_time.md#settings-configyaml--speech) for `enabled, threshold, min_speech_ms,
+min_silence_ms, merge_gap_s, min_turn_s, presenter_fallback`.
+
 ## batch
 | Key | Default | Meaning |
 |---|---|---|
@@ -72,6 +76,9 @@ gestures run <videos/folders> [options]  process
     --start SEC        --end SEC          (process only part of each video)
     --limit N          (first N videos)   --stages a,b,c   --force
     --debug-video      (also render debug.mp4)
+gestures demo [--open]                   synthetic conference, no video needed
+gestures validate-prepare [--clips N --length S --seed K]   clips + coding sheet
+gestures validate [--tolerance S]        accuracy report from filled-in coding sheets
 gestures export [options]                rebuild results.xlsx
     --roles a,b   --exclude-roles a,b   --gestures a,b
     --min-confidence X   --phase presentation|qa   --xlsx FILE

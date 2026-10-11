@@ -42,6 +42,8 @@ The workbook contains (every sheet has filter buttons and a frozen header row):
   averages are not biased by missing rows.
 * **By role** – per video × role × gesture: number of people, events, mean rate per minute, mean
   share of time
+* **Talk time** – per person: seconds talking, turns, share of visible time; plus one
+  `(unattributed)` row per video for speech nobody visible could be credited with
 * **Events** – every event with person, role, phase, start/end, confidence
 * **People** – everyone detected (before filtering), with role and the reason for it
 * **Phases** – presentation / Q&A segments per video

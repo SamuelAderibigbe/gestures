@@ -151,6 +151,17 @@ class EventsConfig:
 
 
 @dataclass
+class SpeechConfig:
+    enabled: bool = True
+    threshold: float = 0.5           # Silero VAD speech probability threshold
+    min_speech_ms: int = 250         # shorter sounds are not speech
+    min_silence_ms: int = 300        # pauses shorter than this do not split speech
+    merge_gap_s: float = 1.0         # same speaker again within this gap = same turn
+    min_turn_s: float = 0.5          # shorter attributed pieces are dropped
+    presenter_fallback: bool = True  # during the presentation, speech with no mic holder -> presenter on screen
+
+
+@dataclass
 class BatchConfig:
     video_extensions: list[str] = field(
         default_factory=lambda: [".mp4", ".avi", ".mkv", ".mov", ".webm", ".ts"]
@@ -171,6 +182,7 @@ class Config:
     extract: ExtractConfig = field(default_factory=ExtractConfig)
     people: PeopleConfig = field(default_factory=PeopleConfig)
     events: EventsConfig = field(default_factory=EventsConfig)
+    speech: SpeechConfig = field(default_factory=SpeechConfig)
     batch: BatchConfig = field(default_factory=BatchConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 

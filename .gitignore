@@ -10,3 +10,4 @@ models/
 outputs_demo/
 data/reference/
 .DS_Store
+validation/

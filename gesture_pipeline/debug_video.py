@@ -59,7 +59,7 @@ class _Writer:
 
 def render(video: Path, out: Path, pose: pd.DataFrame, mapping: dict[int, int], people: pd.DataFrame,
            fps: float, max_width: int | None, start: float = 0.0, end: float | None = None,
-           events: pd.DataFrame | None = None, kp_thr: float = 0.4) -> Path:
+           events: pd.DataFrame | None = None, kp_thr: float = 0.4, talk: pd.DataFrame | None = None) -> Path:
     from .people import assign_people
 
     key = "role_key" if "role_key" in people.columns else "role"
@@ -94,6 +94,13 @@ def render(video: Path, out: Path, pose: pd.DataFrame, mapping: dict[int, int], 
                 for j, (_, e) in enumerate(active.iterrows()):
                     cv2.putText(img, f"P{e.person_id}: {e.gesture}", (10, h - 12 - 18 * j),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2, cv2.LINE_AA)
+            if talk is not None and len(talk):
+                now = talk[(talk.start_s <= fr.t) & (talk.end_s >= fr.t)]
+                if len(now):
+                    r0 = now.iloc[0]
+                    who = f"P{int(r0.person_id)} ({r0.method})" if r0.person_id >= 0 else "someone off-screen / unknown"
+                    cv2.putText(img, f"SPEAKING: {who}", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4, cv2.LINE_AA)
+                    cv2.putText(img, f"SPEAKING: {who}", (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 255, 80), 2, cv2.LINE_AA)
             mm, ss = divmod(fr.t, 60)
             cv2.putText(img, f"{int(mm):02d}:{ss:05.2f}", (w - 110, h - 12), cv2.FONT_HERSHEY_SIMPLEX,
                         0.55, (255, 255, 255), 2, cv2.LINE_AA)

@@ -25,7 +25,7 @@ def test_full_run_then_resume(av_video, tmp_path):
     cfg.extract.models = []  # no ML model: tests the plumbing only
     r1 = process_video(av_video, cfg)
     assert r1.ok, r1.error
-    assert r1.stages_run == ["probe", "audio", "extract", "people", "events"]
+    assert r1.stages_run == ["probe", "audio", "speech", "extract", "people", "events", "talk"]
     vdir = tmp_path / "out" / r1.video_id
     with wave.open(str(vdir / "audio.wav")) as w:
         assert w.getframerate() == 16000 and w.getnchannels() == 1
@@ -33,15 +33,15 @@ def test_full_run_then_resume(av_video, tmp_path):
     assert 23 <= len(frames) <= 25  # 3 s at 8 fps
     from gesture_pipeline.export import EVENT_COLUMNS
     assert list(pd.read_csv(vdir / "events.csv").columns) == EVENT_COLUMNS
-    for f in ("people.csv", "phases.csv", "visibility.csv", "summary.csv"):
+    for f in ("people.csv", "phases.csv", "visibility.csv", "summary.csv", "speech.csv", "talk.csv"):
         assert (vdir / f).exists()
 
     r2 = process_video(av_video, cfg)  # nothing changed -> everything skipped
-    assert r2.ok and r2.stages_run == [] and len(r2.stages_skipped) == 5
+    assert r2.ok and r2.stages_run == [] and len(r2.stages_skipped) == 7
 
     cfg.sampling.fps = 4  # changing a setting re-runs only what depends on it
     r3 = process_video(av_video, cfg)
-    assert r3.stages_run == ["extract", "people", "events"]
+    assert r3.stages_run == ["extract", "people", "events", "talk"]
 
 
 def test_broken_video_does_not_stop_batch(tmp_path, numbered_video):

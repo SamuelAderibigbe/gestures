@@ -1,11 +1,12 @@
 [project]
 name = "gesture-pipeline"
-version = "0.5.0"
+version = "0.6.0"
 description = "Count gestures, talk time and on-screen time in recorded conference videos."
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "ultralytics>=8.4",            # YOLO26 detection + tracking
     "lap>=0.5.12",                 # assignment solver used by the ByteTrack tracker
+    "silero-vad>=5.1",             # speech detection for talk time (model bundled, CPU)
     "opencv-python>=4.10",         # same OpenCV package Ultralytics uses (avoid two copies)
     "numpy",
     "scipy>=1.10",                 # peak finding for nods / head shakes

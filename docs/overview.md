@@ -1,7 +1,7 @@
 # How the pipeline works
 
 ```
-video ─▶ probe ─▶ audio ─▶ extract ─▶ people ─▶ events ─▶ export
+video ─▶ probe ─▶ audio ─▶ speech ─▶ extract ─▶ people ─▶ events ─▶ talk ─▶ export
                               │          │          │
                      landmarks/      people.csv   events.csv / summary.csv
                      (slow, once)    (roles)      (gestures)       └─▶ results.xlsx
@@ -15,7 +15,8 @@ video ─▶ probe ─▶ audio ─▶ extract ─▶ people ─▶ events ─�
 | extract | [done] | Samples 8 frames/s; YOLO26-pose finds and tracks every person and gives 17 body keypoints each | `landmarks/pose/*.parquet`, `frames.parquet` |
 | people | [done] | Joins broken tracks, removes duplicate boxes, assigns a role to each person | `people.csv`, `person_map.json` |
 | events | [done] | Applies the gesture rules in [gestures.md](gestures.md); splits the video into presentation / Q&A | `events.csv`, `summary.csv`, `phases.csv`, `visibility.csv` |
-| talk time | [planned] | Speech detection on the audio + microphone/visual cues to attribute speech to people | `speech.csv` |
+| speech | [done] | Speech detection on the audio (Silero VAD) | `speech.csv` |
+| talk | [done] | Who is talking: microphone holder / presenter / unattributed ([talk_time.md](talk_time.md)) | `talk.csv`, `talk_summary.csv` |
 | debug | [done] | Draws boxes, ids, roles, skeletons and detected gestures on the video | `debug.mp4` |
 | export | [done] | Combines all videos into one workbook | `outputs/results.xlsx` |
 
@@ -40,7 +41,7 @@ video ─▶ probe ─▶ audio ─▶ extract ─▶ people ─▶ events ─�
 | Find, track and pose people | Ultralytics YOLO26-pose | One model does detection, tracking and keypoints; works on small, distant people in wide shots; runs on CPU or the Mac GPU |
 | Read video / audio | FFmpeg, OpenCV | Standard, fast, handles every format |
 | Store landmarks | Parquet (pyarrow) | Compact, fast to reload, opens in pandas |
-| Speech detection | Silero VAD [planned] | Accurate, multilingual (Mandarin), CPU-only |
+| Speech detection | Silero VAD | Accurate, multilingual (Mandarin), CPU-only, model bundled |
 | Results | pandas, openpyxl | CSV + Excel for analysis |
 
 MediaPipe (face mesh, hand landmarks) was evaluated but not used for the Taiwan footage: faces

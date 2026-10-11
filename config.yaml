@@ -30,6 +30,11 @@ people:
   zones: []                    # optional fixed roles for a known venue, see docs/roles.md
   # labels: {panel: participant}   # rename roles for other kinds of video
 
+speech:                        # talk time, see docs/talk_time.md
+  enabled: true
+  threshold: 0.5               # speech probability needed (higher = stricter)
+  presenter_fallback: true     # during the presentation, unclaimed speech -> the presenter on screen
+
 batch:
   video_extensions: [".mp4", ".avi", ".mkv", ".mov", ".webm", ".ts"]
   continue_on_error: true      # one broken video must not stop a 300-video run

@@ -5,6 +5,8 @@
     gestures run VIDEO_OR_DIR ...       process videos (resumes where it stopped)
     gestures export                     combine results into one Excel workbook
     gestures demo                       try it on a synthetic conference (no video needed)
+    gestures validate-prepare           make clips + a coding sheet for an accuracy check
+    gestures validate                   compare people's coding with the program
 """
 
 from __future__ import annotations
@@ -136,6 +138,34 @@ def cmd_demo(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_validate_prepare(args) -> int:
+    from .validation import prepare
+
+    cfg = load_config(args.config)
+    setup_logging(cfg.logging.level)
+    clips = prepare(Path(args.output_dir or cfg.paths.output_dir), Path(args.dir), args.clips, args.length, args.seed)
+    print(clips[["clip_id", "video_id", "phase", "start_s", "end_s", "people"]].to_string(index=False))
+    print(f"\nCreated {len(clips)} coding clips in {Path(args.dir) / 'clips'}")
+    print(f"Next: read {Path(args.dir) / 'INSTRUCTIONS.md'}, fill in a copy of coding_sheet.xlsx, then run: gestures validate")
+    return 0
+
+
+def cmd_validate(args) -> int:
+    from .validation import validate, write_report
+
+    cfg = load_config(args.config)
+    setup_logging(cfg.logging.level)
+    tables = validate(Path(args.output_dir or cfg.paths.output_dir), Path(args.dir), args.tolerance)
+    path = write_report(tables, Path(args.dir) / "accuracy_report.xlsx")
+    pd_opts = tables["Accuracy"][["gesture", "marked_by_person", "found_by_program", "matched",
+                                  "precision", "recall", "f1"]]
+    print(pd_opts.to_string(index=False))
+    if len(tables["Coder agreement"]):
+        print("\nAgreement between coders:\n" + tables["Coder agreement"].to_string(index=False))
+    print(f"\nFull report (incl. every miss and extra, for tuning): {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="gestures", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -169,6 +199,22 @@ def build_parser() -> argparse.ArgumentParser:
     dm.add_argument("--output", default="outputs_demo")
     dm.add_argument("--open", action="store_true", help="open the debug video and Excel file (macOS)")
     dm.set_defaults(func=cmd_demo)
+
+    vp = sub.add_parser("validate-prepare", help="create clips + coding sheet for an accuracy check")
+    vp.add_argument("--config", default=_default_config())
+    vp.add_argument("--output-dir", help="processed results folder (default from config)")
+    vp.add_argument("--dir", default="validation", help="where to put clips and sheets")
+    vp.add_argument("--clips", type=int, default=10)
+    vp.add_argument("--length", type=float, default=120.0, help="clip length in seconds")
+    vp.add_argument("--seed", type=int, default=1, help="change to get a different random selection")
+    vp.set_defaults(func=cmd_validate_prepare)
+
+    va = sub.add_parser("validate", help="compare filled-in coding sheets with the program's results")
+    va.add_argument("--config", default=_default_config())
+    va.add_argument("--output-dir")
+    va.add_argument("--dir", default="validation")
+    va.add_argument("--tolerance", type=float, default=1.0, help="seconds of slack when matching times")
+    va.set_defaults(func=cmd_validate)
 
     e = sub.add_parser("export", help="combine results into an Excel workbook")
     e.add_argument("--config", default=_default_config())

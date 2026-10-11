@@ -28,7 +28,8 @@ LANDMARK_SCHEMA = pa.schema([
     ("person_id", pa.int32()),        # tracker id; -1 if not tracked yet
     ("region", pa.string()),          # which tile/crop it came from ("full" for whole frame)
     ("score", pa.float32()),          # detector confidence
-    ("bbox", pa.list_(pa.float32(), 4)),  # x1, y1, x2, y2 normalised
+    ("bbox", pa.list_(pa.float32())),     # x1, y1, x2, y2 normalised (plain list: fixed-size lists with
+                                          # missing values are read differently across pyarrow versions)
     ("x", pa.list_(pa.float32())),
     ("y", pa.list_(pa.float32())),
     ("z", pa.list_(pa.float32())),
