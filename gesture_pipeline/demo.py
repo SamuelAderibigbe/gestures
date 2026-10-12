@@ -235,7 +235,7 @@ def run_demo(out_dir: Path = Path("outputs_demo")) -> tuple[bool, pd.DataFrame, 
     cfg = Config()
     cfg.paths.output_dir = str(out_dir)
     cfg.sampling.max_width = None
-    res = process_video(video, cfg, stages=["probe", "people", "events", "debug"], force=True)
+    res = process_video(video, cfg, stages=["probe", "speech", "people", "events", "talk", "debug"], force=True)
     if not res.ok:
         raise RuntimeError(res.error)
     xlsx = export_batch(out_dir, role_gestures=cfg.events.gestures)

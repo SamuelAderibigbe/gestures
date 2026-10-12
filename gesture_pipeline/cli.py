@@ -231,7 +231,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except Exception as exc:  # noqa: BLE001
+        from .validation import NotReadyError
+        from .ingest import ToolMissingError
+        if isinstance(exc, (NotReadyError, ToolMissingError, FileNotFoundError, KeyError, ValueError)) \
+                and not getattr(args, "traceback", False):
+            # Expected problems (wrong order, missing file, typo in config): a clear message, no traceback.
+            print(f"\nError: {exc}", file=sys.stderr)
+            return 2
+        raise
 
 
 if __name__ == "__main__":

@@ -69,7 +69,7 @@ report accuracy on the other half, so the numbers aren't flattered by tuning.
 
 | Date | What | Result |
 |---|---|---|
-| 2026-10-11 | Unit and end-to-end tests (synthetic videos, keypoints, demo, validation loop) | 81/81 pass |
+| 2026-10-12 | Unit and end-to-end tests (synthetic videos, keypoints, demo, validation loop) | 83/83 pass |
 | 2026-10-11 | Microphone cue, Chun Yuan Q&A | Speaking panelist 100%, other three 0% |
 | 2026-10-11 | Roles on 12 clips from all 6 videos (see [roles.md](roles.md)) | all correct after 4 fixes |
 | 2026-10-11 | Head keypoint jitter on real panelists / presenter | 1–4% / 7% of head height per frame; nod threshold made jitter-adaptive |

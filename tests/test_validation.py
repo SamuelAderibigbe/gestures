@@ -62,3 +62,17 @@ def test_prepare_and_validate_on_demo(tmp_path):
     assert acc.loc["nod", "found_by_program"] == 2 and acc.loc["nod", "marked_by_person"] == 2
     assert acc.loc["nod", "matched"] == 1                              # one agreed, one each way missed
     assert "holding_mic" not in acc.index                              # not coded -> not counted
+
+
+def test_prepare_explains_when_nothing_is_processed(tmp_path):
+    from gesture_pipeline.validation import NotReadyError
+    (tmp_path / "out" / "old_video").mkdir(parents=True)
+    (tmp_path / "out" / "old_video" / "status.json").write_text('{"stages": {"extract": {"state": "done"}}}')
+    with pytest.raises(NotReadyError, match="gestures run"):
+        prepare(tmp_path / "out", tmp_path / "validation")
+
+
+def test_cli_shows_message_not_traceback(tmp_path, capsys):
+    from gesture_pipeline.cli import main
+    assert main(["validate-prepare", "--output-dir", str(tmp_path / "nothing"), "--dir", str(tmp_path / "v")]) == 2
+    assert "gestures run" in capsys.readouterr().err

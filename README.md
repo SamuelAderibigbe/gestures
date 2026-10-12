@@ -54,7 +54,7 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
 gestures doctor                    # checks everything is installed
-python -m pytest                   # 81 automated checks, should end with "passed"
+python -m pytest                   # 83 automated checks, should end with "passed"
 gestures demo --open               # runs a synthetic conference, opens the video + Excel
 ```
 

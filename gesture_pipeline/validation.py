@@ -43,12 +43,33 @@ CLIP_COLUMNS = ["clip_id", "video_id", "video_path", "phase", "start_s", "end_s"
 
 # ----------------------------------------------------------------------------- prepare
 
+def usable_videos(output_dir: Path) -> tuple[list[Path], list[str]]:
+    """Videos fully processed by the current version (roles, gestures and talk time done)."""
+    ready, stale = [], []
+    if not Path(output_dir).exists():
+        return ready, stale
+    for d in sorted(p for p in Path(output_dir).iterdir() if (p / "status.json").exists()):
+        stages = json.loads((d / "status.json").read_text()).get("stages", {})
+        done = {k for k, v in stages.items() if v.get("state") == "done"}
+        cols = pd.read_csv(d / "people.csv", nrows=0).columns if (d / "people.csv").exists() else []
+        if {"people", "events", "talk"} <= done and "role_key" in cols:
+            ready.append(d)
+        else:
+            stale.append(d.name)
+    return ready, stale
+
+
+class NotReadyError(RuntimeError):
+    pass
+
+
 def choose_clips(output_dir: Path, n_clips: int = 10, length_s: float = 120.0, seed: int = 1) -> pd.DataFrame:
     """Spread clips over videos and over presentation / Q&A, chosen at random positions
     (not by looking at results, so the check is not biased towards easy moments)."""
     rng = np.random.default_rng(seed)
     per_video = []
-    for d in sorted(p for p in Path(output_dir).iterdir() if (p / "people.csv").exists()):
+    ready, stale = usable_videos(output_dir)
+    for d in ready:
         meta = json.loads((d / "metadata.json").read_text()) if (d / "metadata.json").exists() else {}
         phases = pd.read_csv(d / "phases.csv") if (d / "phases.csv").exists() else pd.DataFrame()
         if phases.empty:
@@ -175,9 +196,19 @@ def prepare(output_dir: Path, val_dir: Path, n_clips: int = 10, length_s: float 
 
     val_dir = Path(val_dir)
     (val_dir / "clips").mkdir(parents=True, exist_ok=True)
+    ready, stale = usable_videos(output_dir)
+    if stale:
+        log.warning("Skipping %d video(s) not fully processed by this version: %s. "
+                    "Run `gestures run` on them first.", len(stale), ", ".join(stale))
+    if not ready:
+        raise NotReadyError(
+            f"No fully processed videos in '{output_dir}'. Process your videos first, e.g.\n"
+            f"    gestures run data/raw/\n"
+            f"then run `gestures validate-prepare` again."
+            + (f"\n(Found results from an older version for: {', '.join(stale)}; `gestures run` updates them.)" if stale else ""))
     clips = choose_clips(output_dir, n_clips, length_s, seed)
     if clips.empty:
-        raise RuntimeError(f"No processed videos with phases long enough for {length_s:.0f} s clips in {output_dir}")
+        raise NotReadyError(f"The processed videos are all shorter than {length_s:.0f} s. Try --length 60.")
     for i, c in clips.iterrows():
         vdir = Path(output_dir) / c.video_id
         pose = read_landmarks(vdir / "landmarks", "pose")
@@ -185,7 +216,8 @@ def prepare(output_dir: Path, val_dir: Path, n_clips: int = 10, length_s: float 
         rows = assign_people(pose, mapping)
         rows = rows[(rows.t >= c.start_s) & (rows.t <= c.end_s)]
         people = pd.read_csv(vdir / "people.csv")
-        excluded = set(people[people.role_key.isin(["transient", "on_screen"])].person_id)
+        key = "role_key" if "role_key" in people.columns else "role"
+        excluded = set(people[people[key].isin(["transient", "on_screen"])].person_id)
         rows = rows[~rows.pid.isin(excluded)]
         clips.at[i, "people"] = " ".join(f"P{p}" for p in sorted(rows.pid.unique()))
         log.info("Rendering coding clip %s (%s, %s %.0f-%.0f s)", c.clip_id, c.video_id, c.phase, c.start_s, c.end_s)
