@@ -210,7 +210,8 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
         pose, mapping, people = load_people()
         rows = assign_people(pose, mapping)
         frames = read_frames(paths.frames_index) if paths.frames_index.exists() else pd.DataFrame(columns=["frame", "t"])
-        events, phases = detect_events(rows, people, frames, cfg.events, cfg.sampling.fps, vid)
+        hand = read_landmarks(paths.landmarks_dir, "hand") if (paths.landmarks_dir / "hand").exists() else None
+        events, phases = detect_events(rows, people, frames, cfg.events, cfg.sampling.fps, vid, hand_landmarks=hand)
         phases.to_csv(paths.phases, index=False, encoding="utf-8-sig")
         visibility = person_visibility(rows, phases, cfg.sampling.fps, vid)
         visibility.to_csv(paths.visibility, index=False, encoding="utf-8-sig")

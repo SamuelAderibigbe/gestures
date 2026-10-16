@@ -41,6 +41,9 @@ class ExtractConfig:
     conf: float = 0.3                         # minimum person confidence
     device: str = "auto"                      # auto | cpu | mps (Apple GPU) | cuda
     tracker: str = "conference"               # "conference" (bundled) or a path to a tracker YAML
+    detect_hands: bool = False                # extract fine-grained 21-point hand landmarks & gestures
+    hand_model: str = "gesture_recognizer.task"
+    hand_conf: float = 0.2
     ignore_zones: list[list[float]] = field(default_factory=list)
     # rectangles [x1, y1, x2, y2] in 0-1 frame coordinates; people whose box centre falls
     # inside are dropped (e.g. a picture-in-picture inset or a TV screen showing people)
@@ -89,7 +92,10 @@ DEFAULT_ROLE_GESTURES: dict[str, list[str]] = {
     "head_shake":          ["presenter", "panel"],
     "head_down":           ["presenter", "panel"],
     "look_away":           ["presenter", "panel"],
+    "facing_audience":     ["presenter", "panel"],
     "gesturing":           ["presenter", "panel"],
+    "pointing":            ["presenter", "panel"],
+    "open_palm":           ["presenter", "panel"],
     "stand_up":            ["audience"],
 }
 
@@ -116,8 +122,11 @@ DEFAULT_GESTURE_PARAMS: dict[str, float] = {
     "head_down_min_s": 3.0,
     "look_away_offset": 0.3,        # head turned > this x S from usual position
     "look_away_min_s": 2.0,
+    "facing_min_s": 1.0,            # continuous facing towards audience/camera
     "gesture_speed": 0.8,           # wrist speed > this x S per second
     "gesture_min_s": 0.5,
+    "pointing_min_s": 0.5,          # index finger pointing (at screen / audience)
+    "open_palm_min_s": 0.5,         # open palm presentation gesture
     "mic_min_s": 1.0,
     "mic_merge_gap_s": 2.0,         # a mic held continuously with brief dropouts = one event
     "stand_min_s": 1.0,

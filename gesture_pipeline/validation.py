@@ -178,6 +178,7 @@ Do not try to guess what the program found.
 | head_shake | the head turns left-right-left (or right-left-right) |
 | head_down | the head is clearly lowered (reading, writing, looking at a phone) for 3 seconds or more |
 | look_away | the head is clearly turned away from where the person usually looks, for 2 seconds or more |
+| facing_audience | the person is facing towards the audience/camera (not looking away at slides or down at notes) for at least 1 second |
 | gesturing | hands move while talking or explaining (one row per continuous stretch) |
 | stand_up | a seated person stands up |
 | speaking | the person is talking (one row per stretch of talking; short pauses can stay in one row) |

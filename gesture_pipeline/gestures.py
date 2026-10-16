@@ -11,6 +11,7 @@ Output: events table (one row per gesture event) and phases table.
 
 from __future__ import annotations
 
+import json
 import logging
 import warnings
 from dataclasses import dataclass
@@ -275,16 +276,23 @@ def detect_head_shakes(tr: Track, p: dict) -> list[dict]:
     return out
 
 
-def detect_head_down(tr: Track, p: dict) -> list[dict]:
+def _head_down_mask(tr: Track, p: dict) -> np.ndarray:
     d = smooth(_head_height(tr), _odd(p["smooth_s"] * tr.fps))
     with np.errstate(invalid="ignore"):
         down = d < p["head_down_ratio"]
+    return majority(down, _odd(p["smooth_s"] * tr.fps))
+
+
+def detect_head_down(tr: Track, p: dict, down: np.ndarray | None = None) -> list[dict]:
+    if down is None:
+        down = _head_down_mask(tr, p)
     rr = runs(down, tr.frames(p["head_down_min_s"]), tr.frames(p["merge_gap_s"]))
+    d = smooth(_head_height(tr), _odd(p["smooth_s"] * tr.fps))
     return _events_from_runs(tr, rr, "head_down", [NOSE, L_SHOULDER, R_SHOULDER],
                              lambda s, e: (p["head_down_ratio"] - np.nanmedian(d[s:e + 1])) / 0.3)
 
 
-def detect_look_away(tr: Track, p: dict) -> list[dict]:
+def _look_away_mask(tr: Track, p: dict) -> np.ndarray:
     hx = (tr.nose[:, 0] - tr.sh_mid[:, 0]) / tr.S
     usual = np.nanmedian(hx[tr.face]) if tr.face.any() else np.nan
     off = np.abs(smooth(hx, _odd(p["smooth_s"] * tr.fps)) - usual)
@@ -293,9 +301,32 @@ def detect_look_away(tr: Track, p: dict) -> list[dict]:
     usually_facing = tr.face[tr.present].mean() >= 0.5 if tr.present.any() else False
     with np.errstate(invalid="ignore"):
         away = ((off > p["look_away_offset"]) & tr.face) | (shoulders & ~tr.face & tr.present & usually_facing)
-    away = majority(away, _odd(p["smooth_s"] * tr.fps))
+    return majority(away, _odd(p["smooth_s"] * tr.fps))
+
+
+def detect_look_away(tr: Track, p: dict, away: np.ndarray | None = None) -> list[dict]:
+    if away is None:
+        away = _look_away_mask(tr, p)
     rr = runs(away, tr.frames(p["look_away_min_s"]), tr.frames(p["merge_gap_s"]))
     return _events_from_runs(tr, rr, "look_away", [NOSE, L_EYE, R_EYE, L_SHOULDER, R_SHOULDER])
+
+
+def detect_facing_audience(tr: Track, p: dict, away: np.ndarray | None = None,
+                           down: np.ndarray | None = None) -> list[dict]:
+    """Continuous engagement: person is present, face keypoints visible, not turned away
+    (e.g. at slides) and not looking down (e.g. reading notes)."""
+    usually_facing = tr.face[tr.present].mean() >= 0.5 if tr.present.any() else False
+    if not usually_facing:
+        return []
+    if away is None:
+        away = _look_away_mask(tr, p)
+    if down is None:
+        down = _head_down_mask(tr, p)
+    facing = tr.present & tr.face & ~away & ~down
+    facing = majority(facing, _odd(p["smooth_s"] * tr.fps))
+    min_frames = tr.frames(p.get("facing_min_s", 1.0))
+    rr = runs(facing, min_frames, tr.frames(p["merge_gap_s"]))
+    return _events_from_runs(tr, rr, "facing_audience", [NOSE, L_EYE, R_EYE, L_SHOULDER, R_SHOULDER])
 
 
 def detect_gesturing(tr: Track, p: dict, raised: np.ndarray) -> list[dict]:
@@ -360,10 +391,14 @@ def _detect_person(tr: Track, gestures: set[str], p: dict) -> list[dict]:
         ev += detect_nods(tr, p)
     if "head_shake" in gestures:
         ev += detect_head_shakes(tr, p)
+    down = _head_down_mask(tr, p)
     if "head_down" in gestures:
-        ev += detect_head_down(tr, p)
+        ev += detect_head_down(tr, p, down)
+    away = _look_away_mask(tr, p)
     if "look_away" in gestures:
-        ev += detect_look_away(tr, p)
+        ev += detect_look_away(tr, p, away)
+    if "facing_audience" in gestures:
+        ev += detect_facing_audience(tr, p, away, down)
     if "gesturing" in gestures:
         ev += detect_gesturing(tr, p, raised)
     if "stand_up" in gestures:
@@ -426,8 +461,60 @@ def phase_at(phases: pd.DataFrame, t: float) -> str:
     return str(hit.iloc[0].phase) if len(hit) else str(phases.iloc[-1].phase)
 
 
+def detect_hand_events(hand_df: pd.DataFrame, person_id: int, wanted_gestures: set[str],
+                       frame_t: pd.Series, p: dict, fps: float) -> list[dict]:
+    if hand_df.empty or not wanted_gestures:
+        return []
+    p_hands = hand_df[hand_df.person_id == person_id]
+    if p_hands.empty or "extra" not in p_hands.columns:
+        return []
+
+    n_frames = len(frame_t)
+    frame_to_idx = {int(fr): i for i, fr in enumerate(frame_t.index)}
+    frame_gestures: dict[int, list[tuple[str, float]]] = {}
+    for _, row in p_hands.iterrows():
+        extra_str = row.get("extra")
+        if not isinstance(extra_str, str) or not extra_str:
+            continue
+        try:
+            extra = json.loads(extra_str)
+        except Exception:  # noqa: BLE001
+            continue
+        g = extra.get("gesture")
+        if g in wanted_gestures:
+            fr = int(row.get("frame", -1))
+            score = float(row.get("score") or 0.8)
+            frame_gestures.setdefault(fr, []).append((g, score))
+
+    out = []
+    for g_name in wanted_gestures:
+        mask = np.zeros(n_frames, dtype=bool)
+        confs = np.zeros(n_frames, dtype=float)
+        for fr, matches in frame_gestures.items():
+            if fr in frame_to_idx:
+                idx = frame_to_idx[fr]
+                scores = [s for (name, s) in matches if name == g_name]
+                if scores:
+                    mask[idx] = True
+                    confs[idx] = max(scores)
+
+        min_len = max(1, int(round(p.get(f"{g_name}_min_s", 0.5) * fps)))
+        merge_gap = max(0, int(round(p.get("merge_gap_s", 0.5) * fps)))
+        rr = runs(mask, min_len, merge_gap)
+        for s, e in rr:
+            mean_conf = float(np.mean(confs[s:e + 1])) if np.any(confs[s:e + 1]) else 0.8
+            out.append({
+                "gesture": g_name,
+                "s": s,
+                "e": e,
+                "confidence": round(mean_conf, 3),
+            })
+    return out
+
+
 def detect_events(rows: pd.DataFrame, people: pd.DataFrame, frames: pd.DataFrame, cfg: EventsConfig,
-                  fps: float, video_id: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+                  fps: float, video_id: str,
+                  hand_landmarks: pd.DataFrame | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """rows: one row per person per frame with a `pid` column (people.assign_people)."""
     p = cfg.resolved_params()
     phases = detect_phases(rows, people, frames, cfg.min_phase_s, fps)
@@ -454,6 +541,21 @@ def detect_events(rows: pd.DataFrame, people: pd.DataFrame, frames: pd.DataFrame
                         "phase": phase_at(phases, t0), "gesture": ev["gesture"],
                         "start_s": round(t0, 2), "end_s": round(t1, 2), "duration_s": round(t1 - t0, 2),
                         "confidence": ev["confidence"]})
+
+        # Process fine hand gestures if hand landmarks are available
+        if hand_landmarks is not None and not hand_landmarks.empty:
+            hand_wanted = wanted & {"pointing", "open_palm"}
+            if hand_wanted:
+                h_events = detect_hand_events(hand_landmarks, int(person.person_id), hand_wanted, frame_t, p, fps)
+                for h_ev in h_events:
+                    s, e = h_ev["s"], h_ev["e"]
+                    t0 = float(frame_t.iloc[s])
+                    t1 = float(frame_t.iloc[e]) + 1.0 / fps
+                    out.append({"video_id": video_id, "person_id": int(person.person_id), "role": person.role,
+                                "phase": phase_at(phases, t0), "gesture": h_ev["gesture"],
+                                "start_s": round(t0, 2), "end_s": round(t1, 2), "duration_s": round(t1 - t0, 2),
+                                "confidence": h_ev["confidence"]})
+
     events = pd.DataFrame(out, columns=EVENT_COLUMNS)
     if len(events):
         events = events.sort_values(["start_s", "person_id"]).reset_index(drop=True)

@@ -43,7 +43,8 @@ def cmd_doctor(_args) -> int:
         print(f"  {'OK ' if path else 'MISSING'} {tool:<22} {path or 'install FFmpeg'}")
         ok &= bool(path)
     for mod, required in [("cv2", True), ("numpy", True), ("pandas", True), ("pyarrow", True),
-                          ("openpyxl", True), ("yaml", True), ("ultralytics", True), ("lap", True), ("torch", True)]:
+                          ("openpyxl", True), ("yaml", True), ("ultralytics", True), ("lap", True), ("torch", True),
+                          ("mediapipe", False)]:
         try:
             m = importlib.import_module(mod)
             print(f"  OK  {mod:<22} {getattr(m, '__version__', '')}")
@@ -81,6 +82,8 @@ def cmd_run(args) -> int:
     if args.fps:
         cfg.sampling.fps = args.fps
         cfg.validate()
+    if getattr(args, "detect_hands", False):
+        cfg.extract.detect_hands = True
     out = Path(cfg.paths.output_dir)
     setup_logging(cfg.logging.level, out / "logs" / f"run_{datetime.now():%Y%m%d_%H%M%S}.log")
     stages = args.stages.split(",") if args.stages else list(DEFAULT_STAGES)
@@ -189,6 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--debug-video", action="store_true", help="also render debug.mp4 for checking")
     r.add_argument("--force", action="store_true", help="re-run stages even if already done")
     r.add_argument("--fps", type=float, help="analysis frame rate (overrides config)")
+    r.add_argument("--detect-hands", action="store_true", help="enable 21-point hand tracking & gestures")
     r.add_argument("--start", type=float, default=0.0, help="start time in seconds")
     r.add_argument("--end", type=float, default=None, help="end time in seconds (for quick tests)")
     r.add_argument("--limit", type=int, help="only the first N videos")

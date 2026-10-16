@@ -61,10 +61,13 @@ def window(t, a, b):
     return a <= t < b
 
 
-# ----------------------------------------------------------------------------- tests
+def test_still_person_facing_camera_produces_only_facing_audience():
+    c = counts(detect(make(60)))
+    assert c == {"facing_audience": 1}
 
-def test_still_person_produces_nothing():
-    assert counts(detect(make(60))) == {}
+
+def test_still_person_from_behind_produces_nothing():
+    assert counts(detect(make(60, face=False))) == {}
 
 
 def test_nod():
@@ -220,7 +223,35 @@ def test_noisy_distant_person_needs_bigger_nod():
 
 def test_missing_frames_are_tolerated():
     df = make(20).sample(frac=0.6, random_state=1).sort_values("frame")
-    assert counts(detect(df)) == {}
+    # Missing frames do not trigger false movement gestures
+    assert not set(counts(detect(df)).keys()) - {"facing_audience"}
+
+
+def test_facing_audience():
+    c = counts(detect(make(20)))
+    assert c.get("facing_audience") == 1
+
+
+def test_facing_audience_interrupted_by_look_away():
+    def turn(t, kp):
+        if window(t, 5, 12):  # looks away for 7 seconds
+            kp[:5, 0] += 0.5 * S
+        return kp
+    ev = detect(make(20, turn))
+    c = counts(ev)
+    assert c.get("look_away") == 1
+    assert c.get("facing_audience") == 2  # before and after the look away
+
+
+def test_facing_audience_interrupted_by_head_down():
+    def down(t, kp):
+        if window(t, 5, 11):  # head down for 6 seconds
+            kp[:5, 1] += 0.6 * H
+        return kp
+    ev = detect(make(20, down))
+    c = counts(ev)
+    assert c.get("head_down") == 1
+    assert c.get("facing_audience") == 2
 
 
 def test_runs_helper():
@@ -255,7 +286,9 @@ def test_phases_and_end_to_end_roles():
     phases = detect_phases(rows, people, frames, 20, FPS)
     assert list(phases.phase) == ["presentation", "qa"]
     events, _ = detect_events(rows, people, frames, EventsConfig(), FPS, "v")
-    assert events.empty  # nobody moved
+    # nobody moved, only facing_audience continuous state is found
+    assert set(events.gesture) == {"facing_audience"}
+    assert len(events) == 5  # 1 presenter + 4 panelists
 
 
 @pytest.mark.parametrize("bad", [{"params": {"nod_amp": 1}}, {"gestures": {"wave": ["panel"]}},
@@ -263,3 +296,47 @@ def test_phases_and_end_to_end_roles():
 def test_events_config_rejects_typos(bad):
     with pytest.raises((KeyError, ValueError)):
         EventsConfig(**bad).validate()
+
+
+def test_classify_finger_gestures():
+    from collections import namedtuple
+    from gesture_pipeline.extractors_hand import classify_finger_gesture
+
+    Point = namedtuple("Point", ["x", "y"])
+    # 21 points, wrist at (0.5, 0.8)
+    base = [Point(0.5, 0.8)] * 21
+    # Fist: all tips close to wrist
+    assert classify_finger_gesture(base) == "closed_fist"
+
+    # Pointing: index extended (tip 8 far from wrist), others close
+    pointing = list(base)
+    pointing[6] = Point(0.5, 0.6)  # index PIP
+    pointing[8] = Point(0.5, 0.2)  # index TIP
+    assert classify_finger_gesture(pointing) == "pointing"
+
+    # Open palm: all tips extended
+    open_p = list(pointing)
+    for pip, tip in [(10, 12), (14, 16), (18, 20)]:
+        open_p[pip] = Point(0.5, 0.6)
+        open_p[tip] = Point(0.5, 0.2)
+    assert classify_finger_gesture(open_p) == "open_palm"
+
+
+def test_detect_hand_events():
+    import json
+    from gesture_pipeline.gestures import detect_hand_events
+
+    frame_t = pd.Series([i / FPS for i in range(40)], index=list(range(40)))
+    # Pointing for frames 10 to 20 (11 frames ~ 1.37s)
+    rows = []
+    for f in range(10, 21):
+        rows.append({
+            "frame": f, "t": f / FPS, "person_id": 1, "score": 0.9,
+            "extra": json.dumps({"gesture": "pointing", "side": "right"}),
+        })
+    df_hands = pd.DataFrame(rows)
+    evs = detect_hand_events(df_hands, 1, {"pointing"}, frame_t, DEFAULT_GESTURE_PARAMS, FPS)
+    assert len(evs) == 1
+    assert evs[0]["gesture"] == "pointing"
+    assert evs[0]["s"] == 10 and evs[0]["e"] == 20
+

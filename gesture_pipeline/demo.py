@@ -37,9 +37,11 @@ W, H_IMG, FPS, SECONDS = 1280, 720, 8, 40
 EXPECTED = [
     ("presenter", "holding_mic", 1),
     ("presenter", "gesturing", 1),
+    ("presenter", "facing_audience", 1),
     ("panel", "nod", 2),
     ("panel", "head_shake", 1),
     ("panel", "head_down", 1),
+    ("panel", "facing_audience", 4),
     ("audience", "hand_raise", 1),
     ("audience", "stand_up", 1),
 ]

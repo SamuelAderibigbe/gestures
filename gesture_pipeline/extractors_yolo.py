@@ -83,7 +83,18 @@ class YoloPoseTracker:
         self.device = resolve_device(ex.device)
         self.tracker = tracker_path(ex.tracker)
         self.ignore = ex.ignore_zones
-        log.info("Pose model %s on %s, imgsz=%d", ex.pose_model, self.device, self.imgsz)
+        self.hand_tracker = None
+        if getattr(ex, "detect_hands", False) or "hand" in ex.models:
+            try:
+                from .extractors_hand import HandTracker
+                self.hand_tracker = HandTracker(cfg)
+                if not self.hand_tracker.enabled:
+                    self.hand_tracker = None
+            except Exception as exc:  # noqa: BLE001
+                log.warning("Could not initialize HandTracker: %s", exc)
+                self.hand_tracker = None
+        log.info("Pose model %s on %s, imgsz=%d (hands=%s)",
+                 ex.pose_model, self.device, self.imgsz, self.hand_tracker is not None)
 
     def _ignored(self, cx: float, cy: float) -> bool:
         return any(z[0] <= cx <= z[2] and z[1] <= cy <= z[3] for z in self.ignore)
@@ -112,7 +123,19 @@ class YoloPoseTracker:
                 row["x"], row["y"] = [], []
             writer.add("pose", row)
 
+            if self.hand_tracker is not None and kxy is not None and len(kxy[i]) >= 11:
+                sh_w = 0.05
+                if len(kxy[i]) > 6 and kcf is not None and kcf[i][5] > 0.25 and kcf[i][6] > 0.25:
+                    sh_w = float(abs(kxy[i][6, 0] - kxy[i][5, 0]) / w)
+                self.hand_tracker.process_person_hands(
+                    frame.image, frame.index, frame.t, int(tid), kxy[i],
+                    kcf[i] if kcf is not None else np.ones(len(kxy[i])),
+                    sh_w, writer,
+                )
+
     def close(self) -> None:
+        if self.hand_tracker is not None:
+            self.hand_tracker.close()
         # Reset tracker state so the next video starts with fresh ids.
         if getattr(self.model, "predictor", None) is not None:
             self.model.predictor = None
