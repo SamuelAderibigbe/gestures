@@ -340,3 +340,10 @@ def test_detect_hand_events():
     assert evs[0]["gesture"] == "pointing"
     assert evs[0]["s"] == 10 and evs[0]["e"] == 20
 
+
+
+def test_map_hand_ids_uses_person_ids():
+    from gesture_pipeline.gestures import map_hand_ids
+    hands = pd.DataFrame({"frame": [1, 2, 3], "person_id": [82, 87, 99], "extra": ["{}"] * 3})
+    out = map_hand_ids(hands, {82: 3, 87: 3})
+    assert out.person_id.tolist() == [3, 3]      # merged tracks -> one person; unknown id 99 dropped

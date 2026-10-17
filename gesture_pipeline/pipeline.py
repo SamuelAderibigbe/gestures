@@ -16,7 +16,7 @@ import json
 
 from . import __version__, export, ingest
 from .debug_video import render as render_debug
-from .gestures import detect_events, phase_at
+from .gestures import detect_events, map_hand_ids, phase_at
 from .people import assign_people, build_people
 from .scene import detect_screen
 from .speech import SPEECH_COLUMNS, TALK_SUMMARY_COLUMNS, attribute_speech, detect_speech, summarize_talk
@@ -211,6 +211,7 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
         rows = assign_people(pose, mapping)
         frames = read_frames(paths.frames_index) if paths.frames_index.exists() else pd.DataFrame(columns=["frame", "t"])
         hand = read_landmarks(paths.landmarks_dir, "hand") if (paths.landmarks_dir / "hand").exists() else None
+        hand = map_hand_ids(hand, mapping)  # tracker ids -> person ids (as in people.csv)
         events, phases = detect_events(rows, people, frames, cfg.events, cfg.sampling.fps, vid, hand_landmarks=hand)
         phases.to_csv(paths.phases, index=False, encoding="utf-8-sig")
         visibility = person_visibility(rows, phases, cfg.sampling.fps, vid)

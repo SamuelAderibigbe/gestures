@@ -461,6 +461,16 @@ def phase_at(phases: pd.DataFrame, t: float) -> str:
     return str(hit.iloc[0].phase) if len(hit) else str(phases.iloc[-1].phase)
 
 
+def map_hand_ids(hand_df: pd.DataFrame | None, mapping: dict[int, int]) -> pd.DataFrame | None:
+    """Hand rows are written during extraction with the raw tracker id; translate them to the
+    final person id (people.person_map) so they line up with people.csv. Unmapped ids are dropped."""
+    if hand_df is None or hand_df.empty or not mapping:
+        return hand_df
+    out = hand_df[hand_df.person_id.isin(mapping)].copy()
+    out["person_id"] = out.person_id.map(mapping).astype(int)
+    return out
+
+
 def detect_hand_events(hand_df: pd.DataFrame, person_id: int, wanted_gestures: set[str],
                        frame_t: pd.Series, p: dict, fps: float) -> list[dict]:
     if hand_df.empty or not wanted_gestures:
