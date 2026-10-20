@@ -1,0 +1,43 @@
+# Gesture pipeline configuration.
+# Every value has a default in gesture_pipeline/config.py; only override what you need.
+# Full explanation of each section: docs/configuration.md
+
+paths:
+  output_dir: outputs          # one sub-folder per video is created here
+
+sampling:
+  fps: 8                       # frames analysed per second (5-10 is enough for gestures)
+  max_width: 1280              # wider frames are downscaled (keeps aspect ratio)
+
+audio:
+  extract: true
+  sample_rate: 16000           # 16 kHz mono = what speech-detection models expect
+
+extract:
+  models: [pose]               # YOLO26-pose: finds, tracks and gives 17 body keypoints per person
+  model_dir: models            # weights download here on first run (~8 MB)
+  pose_model: yolo26n-pose.pt  # yolo26s-pose.pt is more accurate but ~2.5x slower
+  imgsz: 1280                  # keep 1280 for wide shots where people are small
+  conf: 0.3
+  device: auto                 # uses the Apple GPU (mps) on a Mac when available
+  tracker: conference
+  ignore_zones: []             # [[x1, y1, x2, y2], ...] in 0-1 coords to drop people (e.g. a TV screen)
+
+people:
+  min_presence_s: 10           # shorter appearances -> "transient" (walking past)
+  merge_max_gap_s: 300
+  merge_max_dist: 0.6
+  zones: []                    # optional fixed roles for a known venue, see docs/roles.md
+  # labels: {panel: participant}   # rename roles for other kinds of video
+
+speech:                        # talk time, see docs/talk_time.md
+  enabled: true
+  threshold: 0.5               # speech probability needed (higher = stricter)
+  presenter_fallback: true     # during the presentation, unclaimed speech -> the presenter on screen
+
+batch:
+  video_extensions: [".mp4", ".avi", ".mkv", ".mov", ".webm", ".ts"]
+  continue_on_error: true      # one broken video must not stop a 300-video run
+
+logging:
+  level: INFO

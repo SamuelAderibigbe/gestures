@@ -1,0 +1,7 @@
+# TWSE WebPro investor conference pages, one per line. Lines starting with # are ignored.
+https://webpro.twse.com.tw/WebPortal/vod/101/DFEF4C473746-C76477F4-C2E7-11F1-8D37/?categoryId=101
+https://webpro.twse.com.tw/WebPortal/vod/101/0333CC0D1C65-445430BC-B72F-11F1-87BF/?categoryId=101
+https://webpro.twse.com.tw/WebPortal/vod/101/1FD91363653A-F7CFEACC-ACF1-11F1-A805/?categoryId=101
+https://webpro.twse.com.tw/WebPortal/vod/101/A59A881C5427-C561213A-AC1A-11F1-9D96/?categoryId=101
+https://webpro.twse.com.tw/WebPortal/vod/101/83646AF21158-94E21D79-A1F2-11F1-96AA/?categoryId=101
+https://webpro.twse.com.tw/WebPortal/vod/101/83646AF21158-BF9AD099-A122-11F1-96AA/?categoryId=101

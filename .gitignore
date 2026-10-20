@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+outputs/
+data/raw/
+models/
+*.egg-info/
+.pytest_cache/
+outputs_demo/
+data/reference/
+.DS_Store
+validation/
