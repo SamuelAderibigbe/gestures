@@ -47,12 +47,18 @@ Prints a table per gesture and writes `validation/accuracy_report.xlsx`:
 | Accuracy | per gesture: marked by person, found by program, matched, **precision, recall, F1** |
 | Per clip | the same per clip |
 | Mismatches | every miss and every extra, with person and time, to look up in the clip and tune rules |
+| Time agreement | for ongoing states (facing, turned away, head down, mic, gesturing, speaking): seconds marked by the person, by the program, by both; `time_precision`, `time_recall` |
+| Time per person | the same per clip and person |
 | Coder agreement | when 2+ people coded the same clips: how much they agree (agreement F1) |
 | Annotations | everything that was coded |
 
 **Matching rule:** a program event and a marked gesture match if they are the same person and
 gesture and their times overlap, allowing 1 s slack on each side (`--tolerance`). Each can match
 only once.
+
+**States vs. events.** Nods, hand raises etc. are counted as events. Ongoing states are
+compared by **time**, because the program reports a long stretch in pieces; counting pieces
+would make it look wrong when it agrees.
 
 **What the numbers mean:**
 

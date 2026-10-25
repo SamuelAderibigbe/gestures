@@ -22,6 +22,8 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from .tables import read_table
+
 from .config import Config
 from .debug_video import SKELETON, _Writer
 from .export import export_batch
@@ -216,8 +218,8 @@ def build_demo_video(out_dir: Path, seed: int = 7) -> tuple[Path, Path]:
 
 def compare(out_dir: Path, video_id: str) -> pd.DataFrame:
     vdir = out_dir / video_id
-    ev = pd.read_csv(vdir / "events.csv")
-    people = pd.read_csv(vdir / "people.csv")
+    ev = read_table(vdir / "events.csv")
+    people = read_table(vdir / "people.csv")
     keys = dict(zip(people.person_id, people.role_key))
     ev["role_key"] = ev.person_id.map(keys)
     rows = []
@@ -242,6 +244,6 @@ def run_demo(out_dir: Path = Path("outputs_demo")) -> tuple[bool, pd.DataFrame, 
         raise RuntimeError(res.error)
     xlsx = export_batch(out_dir, role_gestures=cfg.events.gestures)
     table = compare(out_dir, res.video_id)
-    roles = pd.read_csv(vroot / "people.csv")[["person_id", "role", "role_reason"]]
+    roles = read_table(vroot / "people.csv")[["person_id", "role", "role_reason"]]
     log.info("Roles found:\n%s", roles.to_string(index=False))
     return bool((table.ok == "yes").all()), table, xlsx

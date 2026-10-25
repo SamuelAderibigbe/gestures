@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 venv/
 outputs/
+outputs_*/
 data/raw/
 models/
 *.egg-info/
@@ -11,3 +12,4 @@ outputs_demo/
 data/reference/
 .DS_Store
 validation/
+data/webpro_manifest.csv

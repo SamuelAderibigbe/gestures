@@ -75,6 +75,18 @@ def detect_speech(wav: Path, cfg: SpeechConfig, video_id: str) -> pd.DataFrame:
     return out
 
 
+def clip_to_window(speech: pd.DataFrame, start: float = 0.0, end: float | None = None) -> pd.DataFrame:
+    """Keep only speech inside the analysed part of the video (--start/--end)."""
+    if speech.empty:
+        return speech
+    hi = end if end is not None else float("inf")
+    sp = speech[(speech.end_s > start) & (speech.start_s < hi)].copy()
+    sp["start_s"] = sp.start_s.clip(lower=start)
+    sp["end_s"] = sp.end_s.clip(upper=hi)
+    sp["duration_s"] = (sp.end_s - sp.start_s).round(2)
+    return sp.reset_index(drop=True)
+
+
 def attribute_speech(speech: pd.DataFrame, events: pd.DataFrame, people: pd.DataFrame,
                      phases: pd.DataFrame, rows: pd.DataFrame, cfg: SpeechConfig,
                      video_id: str, step: float = 0.125) -> pd.DataFrame:

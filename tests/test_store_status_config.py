@@ -114,7 +114,8 @@ def test_export_workbook(tmp_path):
     _video_dir(tmp_path)
     xlsx = export_batch(tmp_path, role_gestures=ROLE_GESTURES)
     sheets = pd.read_excel(xlsx, sheet_name=None)
-    assert set(sheets) == {"Summary", "By role", "Talk time", "Events", "People", "Phases", "Videos", "Filters"}
+    assert set(sheets) == {"Facing & hands", "Summary", "By role", "Talk time", "Events", "People", "Phases",
+                           "Videos", "Filters"}
     assert len(sheets["Events"]) == 3
     assert 3 not in set(sheets["Summary"].person_id)          # transient excluded by default
 

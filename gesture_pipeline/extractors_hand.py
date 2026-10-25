@@ -1,9 +1,19 @@
-"""Hand tracking + fine-grained gesture recognition using MediaPipe Tasks."""
+"""Hand tracking + hand-shape gestures (pointing, open palm) using MediaPipe Tasks.
+
+EXPERIMENTAL. Enabled with `gestures run ... --detect-hands` and needs
+`models/gesture_recognizer.task` (see docs/gestures.md). For each person and each wrist
+found by the body model, a square crop around the hand is passed to MediaPipe's Gesture
+Recognizer; the 21 hand points and a gesture label are stored under landmarks/hand/.
+
+In wide conference shots hands are only ~15-25 px, so crops are small and results are
+noisy. Treat pointing / open_palm as indicative until checked against hand-coded clips.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +24,12 @@ from .config import Config
 from .store import LandmarkWriter
 
 log = logging.getLogger(__name__)
+
+# Bump when the hand-extraction logic changes, so `gestures run` re-extracts hands.
+HAND_EXTRACTOR_VERSION = 2
+
+# MediaPipe's C++ layer prints a warning per non-square crop; keep the console readable.
+os.environ.setdefault("GLOG_minloglevel", "2")
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),        # thumb
@@ -103,6 +119,7 @@ class HandTracker:
         h, w = image.shape[:2]
         shoulder_w = shoulder_w_norm * w if shoulder_w_norm > 0 else 0.05 * w
         results = []
+        used_wrists: list[tuple[float, float]] = []
 
         for wrist_idx, elbow_idx, side in [(9, 7, "left"), (10, 8, "right")]:
             if wrist_idx >= len(kcf) or kcf[wrist_idx] < 0.25:
@@ -133,6 +150,12 @@ class HandTracker:
             if crop.shape[0] < 16 or crop.shape[1] < 16:
                 continue
 
+            # MediaPipe's hand detector expects hands much larger than the ~20 px in a wide
+            # shot; enlarging the crop helps it. Landmarks are relative to the crop, so the
+            # mapping back to the frame below is unaffected.
+            if crop.shape[0] < 224:
+                crop = cv2.resize(crop, (224, int(round(224 * crop.shape[0] / crop.shape[1]))),
+                                  interpolation=cv2.INTER_CUBIC)
             crop_rgb = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
             mp_img = self.mp.Image(image_format=self.mp.ImageFormat.SRGB, data=crop_rgb)
             try:
@@ -143,56 +166,71 @@ class HandTracker:
             if not out.hand_landmarks:
                 continue
 
-            for lm_list, handedness_list in zip(out.hand_landmarks, out.handedness or [[]]):
-                mp_cat = "None"
-                if out.gestures:
-                    for g in out.gestures:
-                        for c in g:
-                            if c.category_name != "None":
-                                mp_cat = c.category_name
-                                break
+            # A crop around one wrist can also contain this person's other hand or a
+            # neighbour's hand. Keep only the hand whose own wrist point (landmark 0) is
+            # closest to the body skeleton's wrist, and read THAT hand's gesture label.
+            crop_w, crop_h = x2 - x1, y2 - y1
+            best_k, best_d = None, None
+            for k, lm_list in enumerate(out.hand_landmarks):
+                hx0 = x1 + lm_list[0].x * crop_w
+                hy0 = y1 + lm_list[0].y * crop_h
+                d = float(np.hypot(hx0 - wx, hy0 - wy))
+                if best_d is None or d < best_d:
+                    best_k, best_d = k, d
+            if best_k is None or best_d > 0.6 * R:
+                continue                                   # no hand belongs to this wrist
+            lm_list = out.hand_landmarks[best_k]
+            gx_w, gy_w = x1 + lm_list[0].x * crop_w, y1 + lm_list[0].y * crop_h
+            if any(np.hypot(gx_w - px, gy_w - py) < 0.3 * R for px, py in used_wrists):
+                continue                                   # same hand already counted via the other wrist
+            used_wrists.append((gx_w, gy_w))
 
-                # Global coordinates mapped back to full frame
-                crop_w = x2 - x1
-                crop_h = y2 - y1
-                gx = [(x1 + pt.x * crop_w) / w for pt in lm_list]
-                gy = [(y1 + pt.y * crop_h) / h for pt in lm_list]
-                gz = [pt.z for pt in lm_list]
+            mp_cat, mp_score = "None", 0.0
+            if out.gestures and best_k < len(out.gestures) and out.gestures[best_k]:
+                top = out.gestures[best_k][0]
+                mp_cat, mp_score = top.category_name, float(top.score)
+            handedness = out.handedness[best_k] if out.handedness and best_k < len(out.handedness) else []
 
-                # Blend MediaPipe gesture output with finger geometry
-                geom_gesture = classify_finger_gesture(lm_list)
-                if mp_cat == "Pointing_Up" or geom_gesture == "pointing":
-                    final_gesture = "pointing"
-                elif mp_cat == "Open_Palm" or geom_gesture == "open_palm":
-                    final_gesture = "open_palm"
-                elif mp_cat == "Closed_Fist" or geom_gesture == "closed_fist":
-                    final_gesture = "closed_fist"
-                elif geom_gesture in ("pinch", "counting_two"):
-                    final_gesture = geom_gesture
-                else:
-                    final_gesture = "neutral"
+            gx = [(x1 + pt.x * crop_w) / w for pt in lm_list]
+            gy = [(y1 + pt.y * crop_h) / h for pt in lm_list]
+            gz = [pt.z for pt in lm_list]
 
-                hand_score = float(handedness_list[0].score) if handedness_list else 0.8
-                extra_data = {
-                    "side": side,
-                    "gesture": final_gesture,
-                    "mp_category": mp_cat,
-                    "geom_gesture": geom_gesture,
-                }
-                row = {
-                    "frame": frame_index,
-                    "t": t,
-                    "person_id": person_id,
-                    "region": side,
-                    "score": round(hand_score, 3),
-                    "bbox": [round(x1 / w, 4), round(y1 / h, 4), round(x2 / w, 4), round(y2 / h, 4)],
-                    "x": [round(v, 5) for v in gx],
-                    "y": [round(v, 5) for v in gy],
-                    "z": [round(v, 5) for v in gz],
-                    "extra": json.dumps(extra_data),
-                }
-                writer.add("hand", row)
-                results.append(row)
+            # Blend MediaPipe's own label with finger geometry
+            geom_gesture = classify_finger_gesture(lm_list)
+            if mp_cat == "Pointing_Up" or geom_gesture == "pointing":
+                final_gesture = "pointing"
+            elif mp_cat == "Open_Palm" or geom_gesture == "open_palm":
+                final_gesture = "open_palm"
+            elif mp_cat == "Closed_Fist" or geom_gesture == "closed_fist":
+                final_gesture = "closed_fist"
+            elif geom_gesture in ("pinch", "counting_two"):
+                final_gesture = geom_gesture
+            else:
+                final_gesture = "neutral"
+
+            hand_score = float(handedness[0].score) if handedness else 0.8
+            extra_data = {
+                "side": side,
+                "gesture": final_gesture,
+                "mp_category": mp_cat,
+                "mp_score": round(mp_score, 3),
+                "geom_gesture": geom_gesture,
+                "crop_px": int(2 * R),
+            }
+            row = {
+                "frame": frame_index,
+                "t": t,
+                "person_id": person_id,
+                "region": side,
+                "score": round(hand_score, 3),
+                "bbox": [round(x1 / w, 4), round(y1 / h, 4), round(x2 / w, 4), round(y2 / h, 4)],
+                "x": [round(v, 5) for v in gx],
+                "y": [round(v, 5) for v in gy],
+                "z": [round(v, 5) for v in gz],
+                "extra": json.dumps(extra_data),
+            }
+            writer.add("hand", row)
+            results.append(row)
 
         return results
 

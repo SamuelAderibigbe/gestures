@@ -163,6 +163,8 @@ def cmd_validate(args) -> int:
     pd_opts = tables["Accuracy"][["gesture", "marked_by_person", "found_by_program", "matched",
                                   "precision", "recall", "f1"]]
     print(pd_opts.to_string(index=False))
+    if len(tables["Time agreement"]):
+        print("\nOngoing states, compared by time (seconds):\n" + tables["Time agreement"].to_string(index=False))
     if len(tables["Coder agreement"]):
         print("\nAgreement between coders:\n" + tables["Coder agreement"].to_string(index=False))
     print(f"\nFull report (incl. every miss and extra, for tuning): {path}")

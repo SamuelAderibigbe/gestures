@@ -49,6 +49,9 @@ class ExtractConfig:
     # inside are dropped (e.g. a picture-in-picture inset or a TV screen showing people)
 
     def validate(self) -> None:
+        if "hand" in self.models:            # `models: [pose, hand]` means: pose + hands
+            self.models = [m for m in self.models if m != "hand"] or ["pose"]
+            self.detect_hands = True
         if not 0 < self.conf < 1:
             raise ValueError("extract.conf must be between 0 and 1")
         if self.imgsz % 32:

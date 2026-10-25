@@ -146,6 +146,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  (could not read page title: {exc})")
             info = {"date": "", "stock_code": "", "company": "", "event": ""}
         prev = manifest.get(vid, {})
+        if not info.get("date") and prev.get("date"):
+            # Page title came back generic (the site sometimes serves it without the event
+            # name): keep the details we already know instead of overwriting them.
+            info = {k: prev.get(k, "") for k in ("date", "stock_code", "company", "event")}
         out = Path(prev["file"]) if prev.get("file") else args.out / output_name(info, vid)
         row = {"video_id": vid, **info, "page_url": url, "stream_url": stream_url(vid), "file": str(out)}
         print(f"[{i}/{len(urls)}] {info['date']} {info['stock_code']} {info['company']} -> {out}")

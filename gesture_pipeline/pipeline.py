@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Iterable
 
 import pandas as pd
+
+from .tables import read_table
 from tqdm import tqdm
 
 import json
@@ -17,9 +19,11 @@ import json
 from . import __version__, export, ingest
 from .debug_video import render as render_debug
 from .gestures import detect_events, map_hand_ids, phase_at
+from .measures import facing_and_hands, timeline
 from .people import assign_people, build_people
 from .scene import detect_screen
-from .speech import SPEECH_COLUMNS, TALK_SUMMARY_COLUMNS, attribute_speech, detect_speech, summarize_talk
+from .speech import (SPEECH_COLUMNS, TALK_SUMMARY_COLUMNS, attribute_speech, clip_to_window, detect_speech,
+                     summarize_talk)
 from .config import Config
 from .extractors import build_extractors
 from .frames import FrameSampler
@@ -92,12 +96,14 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
         "probe": fp_file,
         "audio": settings_fingerprint({"f": fp_file, "sr": cfg.audio.sample_rate}),
         "extract": settings_fingerprint({"f": fp_file, "s": cfg.sampling.__dict__,
-                                         "e": cfg.extract.__dict__, "win": [start, end]}),
+                                         "e": cfg.extract.__dict__, "win": [start, end],
+                                         "hands_v": 2 if cfg.extract.detect_hands else 0}),
     }
     fps["people"] = settings_fingerprint({"x": fps["extract"], "p": cfg.people.__dict__, "v": __version__})
     fps["events"] = settings_fingerprint({"x": fps["people"], "e": cfg.events.__dict__,
                                          "p": cfg.events.resolved_params(), "v": __version__})
-    fps["speech"] = settings_fingerprint({"a": fps["audio"], "s": cfg.speech.__dict__, "v": __version__})
+    fps["speech"] = settings_fingerprint({"a": fps["audio"], "s": cfg.speech.__dict__, "v": __version__,
+                                          "win": [start, end]})
     fps["talk"] = settings_fingerprint({"e": fps["events"], "s": fps["speech"]})
     fps["debug"] = settings_fingerprint({"x": fps["talk"]})
 
@@ -157,7 +163,7 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
         pose = read_landmarks(paths.landmarks_dir, "pose")
         mapping = {int(k): v for k, v in json.loads(paths.person_map.read_text()).items()} \
             if paths.person_map.exists() else {}
-        people = pd.read_csv(paths.people) if paths.people.exists() and paths.people.stat().st_size else pd.DataFrame()
+        people = read_table(paths.people) if paths.people.exists() and paths.people.stat().st_size else pd.DataFrame()
         return pose, mapping, people
 
     def do_people():
@@ -179,16 +185,19 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
             pd.DataFrame(columns=SPEECH_COLUMNS).to_csv(paths.speech, index=False)
             return {"skipped": "no audio"}
         sp = detect_speech(paths.audio, cfg.speech, vid)
+        # Only keep speech inside the part of the video being analysed (--start/--end), so a
+        # 2-minute test run is not compared with an hour of speech.
+        sp = clip_to_window(sp, start, end)
         sp.to_csv(paths.speech, index=False, encoding="utf-8-sig")
         return {"speech_s": round(float(sp.duration_s.sum()), 1), "segments": int(len(sp))}
 
     def do_talk():
-        speech = pd.read_csv(paths.speech) if paths.speech.exists() else pd.DataFrame(columns=SPEECH_COLUMNS)
+        speech = read_table(paths.speech) if paths.speech.exists() else pd.DataFrame(columns=SPEECH_COLUMNS)
         pose, mapping, people = load_people()
         rows = assign_people(pose, mapping)
-        events = pd.read_csv(paths.events) if paths.events.exists() else pd.DataFrame()
-        phases = pd.read_csv(paths.phases) if paths.phases.exists() else pd.DataFrame()
-        visibility = pd.read_csv(paths.visibility) if paths.visibility.exists() else pd.DataFrame()
+        events = read_table(paths.events) if paths.events.exists() else pd.DataFrame()
+        phases = read_table(paths.phases) if paths.phases.exists() else pd.DataFrame()
+        visibility = read_table(paths.visibility) if paths.visibility.exists() else pd.DataFrame()
         talk = attribute_speech(speech, events, people, phases, rows, cfg.speech, vid)
         talk.to_csv(paths.talk, index=False, encoding="utf-8-sig")
         summary = summarize_talk(talk, people, visibility) if len(people) or len(talk) \
@@ -200,8 +209,8 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
 
     def do_debug():
         pose, mapping, people = load_people()
-        events = pd.read_csv(paths.events) if paths.events.exists() else None
-        talk = pd.read_csv(paths.talk) if paths.talk.exists() and paths.talk.stat().st_size else None
+        events = read_table(paths.events) if paths.events.exists() else None
+        talk = read_table(paths.talk) if paths.talk.exists() and paths.talk.stat().st_size else None
         render_debug(video, paths.debug_video, pose, mapping, people, cfg.sampling.fps,
                      cfg.sampling.max_width, start, end, events, talk=talk)
         return {}
@@ -217,6 +226,10 @@ def process_video(video: Path, cfg: Config, stages: list[str] | None = None, for
         visibility = person_visibility(rows, phases, cfg.sampling.fps, vid)
         visibility.to_csv(paths.visibility, index=False, encoding="utf-8-sig")
         export.write_video_outputs(events, people, visibility, cfg.events.gestures, paths.events, paths.summary)
+        hands_tracked = bool(hand is not None and len(hand))
+        facing_and_hands(events, people, visibility, hands_tracked).to_csv(paths.facing_hands, index=False,
+                                                                         encoding="utf-8-sig")
+        timeline(events, people, rows, vid).to_csv(paths.timeline, index=False, encoding="utf-8-sig")
         return {"events": int(len(events)),
                 "by_gesture": events.gesture.value_counts().to_dict() if len(events) else {}}
 

@@ -32,6 +32,9 @@ re-runs only the stages that depend on it.
 | device | `auto` | `auto` picks the Mac GPU (`mps`) if available, else CPU |
 | tracker | `conference` | Bundled ByteTrack settings for static cameras, or a path to your own YAML |
 | ignore_zones | `[]` | Rectangles `[x1,y1,x2,y2]` (0–1) where people are ignored |
+| detect_hands | false | Experimental hand shapes with MediaPipe (same as `--detect-hands`); needs `pip install -e ".[hands]"` and `models/gesture_recognizer.task`, see [facing_and_hands.md](facing_and_hands.md) |
+| hand_model | `gesture_recognizer.task` | Hand model file inside `model_dir` |
+| hand_conf | 0.2 | Minimum hand detection confidence |
 
 ## people
 | Key | Default | Meaning |
@@ -76,6 +79,7 @@ gestures run <videos/folders> [options]  process
     --start SEC        --end SEC          (process only part of each video)
     --limit N          (first N videos)   --stages a,b,c   --force
     --debug-video      (also render debug.mp4)
+    --detect-hands     (experimental hand shapes: pointing, open palm)
 gestures demo [--open]                   synthetic conference, no video needed
 gestures validate-prepare [--clips N --length S --seed K]   clips + coding sheet
 gestures validate [--tolerance S]        accuracy report from filled-in coding sheets

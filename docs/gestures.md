@@ -32,6 +32,9 @@ S = the person's shoulder width, H = their nose-to-shoulder height (medians over
 | **head_down** | presenter, panel | Nose-to-shoulder height < 0.6 × usual (reading notes, looking at a phone, writing) | 3.0 s |
 | **look_away** | presenter, panel | Head turned > 0.3 S from the person's usual direction, or face no longer visible while the shoulders still are (only for people whose face is normally visible) | 2.0 s |
 | **gesturing** | presenter, panel | A hand above the waist moving faster than 0.8 S per second (not during a hand raise) | 0.5 s |
+| **facing_audience** | presenter, panel | Face visible and neither turned away nor head-down; a continuous state, use its share of time (see [facing_and_hands.md](facing_and_hands.md)) | 1.0 s |
+| **pointing** | presenter, panel | *Experimental, needs `--detect-hands`.* Index finger extended, other fingers curled (MediaPipe hand shape) | 0.5 s |
+| **open_palm** | presenter, panel | *Experimental, needs `--detect-hands`.* All four fingers extended | 0.5 s |
 | **stand_up** | audience | Shoulders rise ≥ 0.8 S above where they were in the preceding 2 s, and stay up; the event lasts until they sit back down | 1.0 s |
 
 All rules first ignore keypoints with confidence < 0.4, remove single-frame flicker, and merge

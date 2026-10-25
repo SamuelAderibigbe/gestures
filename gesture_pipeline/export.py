@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .tables import read_table
+
 log = logging.getLogger(__name__)
 
 EVENT_COLUMNS = ["video_id", "person_id", "role", "phase", "gesture", "start_s", "end_s",
@@ -118,7 +120,7 @@ class ExportFilters:
 
 def _read_one(p: Path) -> pd.DataFrame:
     try:
-        return pd.read_csv(p)
+        return read_table(p)
     except pd.errors.EmptyDataError:
         return pd.DataFrame()
 
@@ -131,8 +133,9 @@ def _read(paths: list[Path]) -> pd.DataFrame:
 
 def export_batch(output_dir: Path, xlsx_path: Path | None = None, filters: ExportFilters | None = None,
                  role_gestures: dict[str, list[str]] | None = None) -> Path:
-    """One workbook for every processed video: Summary, By role, Talk time, Events, People,
-    Phases, Videos, Filters (a record of exactly which filters produced the numbers)."""
+    """One workbook for every processed video: Facing & hands, Summary, By role, Talk time,
+    Events, People, Phases, Videos, Filters (a record of exactly which filters produced the
+    numbers). Also writes facing_and_hands.csv and timeline_all.csv next to it."""
     from .config import DEFAULT_ROLE_GESTURES
 
     filters = filters or ExportFilters()
@@ -156,8 +159,8 @@ def export_batch(output_dir: Path, xlsx_path: Path | None = None, filters: Expor
     phases = _read([d / "phases.csv" for d in video_dirs])
     visibility = _read([d / "visibility.csv" for d in video_dirs])
     talk_all = _read([d / "talk_summary.csv" for d in video_dirs])
-    speech = _read([d / "speech.csv" for d in video_dirs])
 
+    speech = _read([d / "speech.csv" for d in video_dirs])
     people = filters.apply_people(people_all)
     events = filters.apply_events(events_all, people) if len(people) else empty_events()
     vis = visibility
@@ -165,6 +168,16 @@ def export_batch(output_dir: Path, xlsx_path: Path | None = None, filters: Expor
         vis = visibility[visibility.phase == filters.phase]
     summary = summarize(events, people, vis, role_gestures, filters.gestures)
     roles = by_role(summary)
+    facing = _read([d / "facing_and_hands.csv" for d in video_dirs])
+    if len(facing) and len(people):
+        facing = facing.merge(people[["video_id", "person_id"]], on=["video_id", "person_id"])
+    if len(facing) or video_dirs:
+        # Combined CSVs for analysis outside Excel (the timeline can be large).
+        facing.to_csv(output_dir / "facing_and_hands.csv", index=False, encoding="utf-8-sig")
+        tl_parts = [d / "timeline.csv" for d in video_dirs if (d / "timeline.csv").exists()]
+        if tl_parts:
+            pd.concat([_read([f]) for f in tl_parts], ignore_index=True).to_csv(
+                output_dir / "timeline_all.csv", index=False, encoding="utf-8-sig")
     if len(talk_all):
         keep = talk_all.merge(people[["video_id", "person_id"]], on=["video_id", "person_id"]) if len(people) else talk_all.iloc[0:0]
         talk = pd.concat([keep, talk_all[talk_all.person_id < 0]], ignore_index=True) \
@@ -185,7 +198,8 @@ def export_batch(output_dir: Path, xlsx_path: Path | None = None, filters: Expor
     xlsx_path = Path(xlsx_path or output_dir / "results.xlsx")
     tmp = xlsx_path.with_suffix(".partial.xlsx")
     with pd.ExcelWriter(tmp, engine="openpyxl") as xw:
-        for name, df in [("Summary", summary), ("By role", roles), ("Talk time", talk), ("Events", events),
+        for name, df in [("Facing & hands", facing), ("Summary", summary), ("By role", roles),
+                         ("Talk time", talk), ("Events", events),
                          ("People", people_all), ("Phases", phases), ("Videos", videos), ("Filters", filt)]:
             if len(df) > EXCEL_MAX_ROWS:
                 log.warning("%s exceeds Excel's row limit; truncated (full data in the CSV files)", name)

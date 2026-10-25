@@ -92,6 +92,35 @@ def test_picture_on_slide_is_on_screen():
     assert roles[mapping[3]] == "on_screen" and roles[mapping[1]] == "presenter"
 
 
+def test_presenter_at_central_podium_inside_screen_area_is_kept():
+    # 聲寶: presenter in front of the screen, lower body hidden by the podium, so the box is
+    # entirely inside the screen area and does not reach below it. Must stay a presenter.
+    rows = []
+    for f in range(160):
+        rows.append(_row(f, 1, 0.80, 0.35, 0.20))                    # facing, upper body only
+        rows.append(_row(f, 2, 0.20, 0.90, 0.25, face=False))        # audience
+    screen = [0.2, 0.05, 0.85, 0.6]
+    people, mapping = build_people(pd.DataFrame(rows), PeopleConfig(), "v", 8, screen=screen)
+    roles = dict(zip(people.person_id, people.role_key))
+    assert roles[mapping[1]] == "presenter"
+
+
+def test_panel_seated_below_screen_is_kept_while_slide_photo_is_not():
+    # Q&A: panel at a table in front of the screen (inside the screen area), presenter
+    # standing at a side podium outside it, and a small photo of a person on the slide.
+    rows = []
+    for f in range(160):
+        rows.append(_row(f, 1, 0.92, 0.45, 0.30, standing=True))    # side presenter, outside screen
+        for i, x in enumerate((0.35, 0.50, 0.65)):
+            rows.append(_row(f, 10 + i, x, 0.42, 0.18))              # panel (0.6x presenter), inside screen
+        rows.append(_row(f, 20, 0.45, 0.18, 0.05))                   # photo on the slide (tiny)
+    screen = [0.2, 0.05, 0.85, 0.6]
+    people, mapping = build_people(pd.DataFrame(rows), PeopleConfig(), "v", 8, screen=screen)
+    roles = dict(zip(people.person_id, people.role_key))
+    assert [roles[mapping[t]] for t in (10, 11, 12)] == ["panel"] * 3
+    assert roles[mapping[20]] == "on_screen"
+
+
 def test_staff_at_edge_is_other():
     rows = [_row(f, 1, 0.96, 0.5, 0.3, standing=True) for f in range(160)]
     for r in rows:

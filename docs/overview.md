@@ -83,4 +83,12 @@ start_s, end_s, duration_s, confidence`.
 
 `visibility.csv` — seconds each person was visible in each phase.
 
+`facing_and_hands.csv` — per presenter / panelist: facing, turned-away and head-down time and
+shares, pointing / open-palm counts ([facing_and_hands.md](facing_and_hands.md)).
+
+`timeline.csv` — per presenter / panelist per second: facing / turned_away / head_down /
+not_visible / unclear, plus pointing and open_palm flags.
+
+`landmarks/hand/` — 21 hand points per hand per frame, only with `--detect-hands`.
+
 `outputs/results.xlsx` — sheets **Videos**, **Summary**, **Events** for all processed videos.

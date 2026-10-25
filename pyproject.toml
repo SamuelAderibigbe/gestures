@@ -1,6 +1,6 @@
 [project]
 name = "gesture-pipeline"
-version = "0.6.0"
+version = "0.7.1"
 description = "Count gestures, talk time and on-screen time in recorded conference videos."
 requires-python = ">=3.10,<3.14"
 dependencies = [
@@ -19,6 +19,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+hands = ["mediapipe>=0.10.31"]   # experimental hand-shape gestures: pip install -e ".[hands]"
 
 [project.scripts]
 gestures = "gesture_pipeline.cli:main"

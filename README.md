@@ -3,10 +3,11 @@
 [![tests](https://github.com/joshuaolusayo/gestures/actions/workflows/tests.yml/badge.svg)](https://github.com/joshuaolusayo/gestures/actions/workflows/tests.yml)
 
 Counts gestures in recorded videos (hand raises, nods, head shakes, gesturing,
-looking down, holding a microphone, standing up) and **talk time** for every person on
-screen, works out who is the **presenter**, the **panel** and the **audience**, and
-exports everything to Excel. Built for Taiwan Stock Exchange investor-conference recordings
-(法人說明會); works on any video with a fixed camera: lectures, meetings, your own recordings.
+looking down, holding a microphone, standing up), measures how much each speaker **faces the
+audience or turns away**, and **talk time** for every person on screen, works out who is
+the **presenter**, the **panel** and the **audience**, and exports everything to Excel. Built
+for Taiwan Stock Exchange investor-conference recordings (法人說明會); works on any video with a
+fixed camera: lectures, meetings, your own recordings.
 
 Runs locally on an ordinary computer. No cloud, no account, and no video ever leaves the machine.
 
@@ -54,7 +55,7 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
 gestures doctor                    # checks everything is installed
-python -m pytest                   # 83 automated checks, should end with "passed"
+python -m pytest                   # 98 automated checks, should end with "passed"
 gestures demo --open               # runs a synthetic conference, opens the video + Excel
 ```
 
@@ -71,6 +72,7 @@ from **Artifacts** at the bottom of the run page.
 gestures run path/to/video.mp4 --debug-video        # one video
 gestures run data/raw/                              # a whole folder (resumes if interrupted)
 gestures run data/raw/ --end 120                    # quick test: first 2 minutes of each
+gestures run data/raw/ --detect-hands               # + experimental hand shapes (docs/facing_and_hands.md)
 gestures export                                     # rebuild outputs/results.xlsx
 gestures export --roles panel --phase qa --min-confidence 0.6 --xlsx outputs/panel_qa.xlsx
 
@@ -123,6 +125,8 @@ with a fixed camera, 720p or better, and people at least ~80 px tall.
 * For people seen from behind, small hand movements near the head are deliberately not counted
   (the model has to guess hidden hands).
 * A person who changes place (e.g. presenter → panel table) is counted as two people.
+* Hand shapes (pointing, open palm) are experimental: hands are ~20 px in wide shots.
+* TWSE recordings start with a ~6 s title card, so nobody is detected in the first seconds.
 * Speech into table-stand microphones can't be credited to a person (no visible cue) and is
   reported as unattributed; check `speech_attributed_pct` per video.
 * Accuracy so far has been checked by eye on clips from six videos; the formal comparison
@@ -151,6 +155,8 @@ outputs/            results, one folder per video (not in git)
 | 9 gestures, presentation/Q&A split, filtered Excel export, debug videos | done, calibrated on the same clips |
 | Demo + automatic tests on GitHub | done |
 | Talk time per person (speech detection + microphone cue) | done, checked on 12 clips |
+| Facing / turning-away measure, per person and per second | done (0.7) |
+| Hand shapes: pointing, open palm (`--detect-hands`, MediaPipe) | experimental, unverified |
 | Accuracy-check tools (coding clips, sheet, report) | done |
 | Formal accuracy check: people coding ~10 clips | waiting for coders ([docs/validation.md](docs/validation.md)) |
 

@@ -142,18 +142,27 @@ def _in_row(f: dict, others: list[dict], aspect: float) -> bool:
 def assign_roles(feats: list[dict], cfg: PeopleConfig, aspect: float = 9 / 16,
                  screen: list[float] | None = None) -> list[tuple[str, str]]:
     """Decide every person's role, looking at the whole scene (rules in docs/roles.md)."""
-    # Size reference: the biggest person facing the camera (a real presenter or panelist).
-    # Pictures on a slide are much smaller than the people standing in front of it.
-    facing = [f["shoulder_w"] for f in feats if f["visible_s"] >= cfg.min_presence_s
-              and f["shoulder_w"] and f["face_ratio"] >= 0.3]
-    ref_S = max(facing) if facing else None
+    # Pictures of people on a slide are much smaller than real people in the room. The size
+    # reference is the typical shoulder width of people facing the camera who are NOT inside
+    # the screen area (e.g. a presenter at a side podium). People in front of the screen
+    # (presenter at a central podium, panel at a table below the screen) are often entirely
+    # inside the screen area with their legs hidden, so being inside is never enough on its
+    # own: when in doubt, a person is kept.
+    def inside(f: dict) -> bool:
+        return bool(screen) and fraction_inside(f["box"], screen) > 0.9
+
+    outside_facing = [f["shoulder_w"] for f in feats if f["visible_s"] >= cfg.min_presence_s
+                      and f["shoulder_w"] and f["face_ratio"] >= 0.3 and not inside(f)]
+    ref_S = float(np.median(outside_facing)) if outside_facing else None
 
     def on_screen(f: dict) -> bool:
-        if not screen or fraction_inside(f["box"], screen) <= 0.9:
+        if not inside(f) or not f["shoulder_w"]:
             return False
-        small = bool(ref_S and f["shoulder_w"] and f["shoulder_w"] < 0.6 * ref_S)
-        floating = f["box"][3] < screen[3] - 0.05     # feet/body don't reach below the screen
-        return small or floating
+        tiny = f["shoulder_w"] < 0.006                  # < ~8 px at 1280: never a real person here
+        # 0.45: in the 20 TWSE videos seated panelists can be ~0.65x a standing presenter,
+        # while slide photos are ~0.3-0.5x; keep real people even if a photo slips through.
+        small = ref_S is not None and f["shoulder_w"] < 0.45 * ref_S
+        return tiny or small
 
     # pass 1: things decided by the person alone
     first: list[tuple[str, str] | None] = []

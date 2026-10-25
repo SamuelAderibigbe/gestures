@@ -37,6 +37,9 @@ gestures export --roles panel --min-confidence 0.6 --xlsx outputs/panel_clear.xl
 
 The workbook contains (every sheet has filter buttons and a frozen header row):
 
+* **Facing & hands** – per presenter / panelist: share of time facing the audience, turned away,
+  head down, and pointing / open-palm rates (see [facing_and_hands.md](facing_and_hands.md)).
+  Also saved as `outputs/facing_and_hands.csv`; the per-second version is `outputs/timeline_all.csv`
 * **Summary** – per video × person × gesture: count, total duration, minutes visible, rate per
   minute, share of visible time. Gestures that apply to a person's role but never happened are listed with **0**, so
   averages are not biased by missing rows.

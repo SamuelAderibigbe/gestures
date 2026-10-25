@@ -57,7 +57,16 @@ def test_prepare_and_validate_on_demo(tmp_path):
         row[1].value = "yes" if row[0].value in ("nod", "hand_raise") else "no"
     wb.save(val / "coding_sheet_tester.xlsx")
 
-    acc = validate(out, val)["Accuracy"].set_index("gesture")
+    ws.append(["C01", panel[1], "facing_audience", "00:01", "00:38"])  # one long stretch
+    for row in cg.iter_rows(min_row=2):
+        if row[0].value == "facing_audience":
+            row[1].value = "yes"
+    wb.save(val / "coding_sheet_tester.xlsx")
+
+    tables = validate(out, val)
+    tt = tables["Time agreement"].set_index("gesture")
+    assert tt.loc["facing_audience", "time_recall"] > 0.6           # pieces vs one stretch still agree
+    acc = tables["Accuracy"].set_index("gesture")
     assert acc.loc["hand_raise", "precision"] == 1.0 and acc.loc["hand_raise", "recall"] == 1.0
     assert acc.loc["nod", "found_by_program"] == 2 and acc.loc["nod", "marked_by_person"] == 2
     assert acc.loc["nod", "matched"] == 1                              # one agreed, one each way missed

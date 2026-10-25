@@ -27,7 +27,7 @@ relate to the other people in the scene**. The reason is written to `people.csv`
 | Role | Rule (checked in this order) | In TWSE footage |
 |---|---|---|
 | transient | visible less than `min_presence_s` (10 s) | people walking past |
-| on_screen | entirely inside the projection screen and either much smaller than the people in the room (< 0.6 × the largest person facing the camera) or not reaching below the screen | people in photos on slides |
+| on_screen | entirely inside the projection screen area **and** either tiny (shoulders < 0.6% of frame width) or much smaller (< 0.45×) than the typical person facing the camera outside the screen area. Being inside the screen area alone is never enough: presenters at a central podium and panels at a table below the screen are inside it too | people in photos on slides |
 | audience | seen from behind ≥ 40% of the time and face < 30%, **or** cut off by the bottom of the frame with no face | investors/analysts in the front rows |
 | other | standing within `edge_margin` (8%) of the left/right edge | TWSE staff, moderators |
 | presenter | standing ≥ 80% of the time (any facing direction except from behind) | speaker at the podium, also when turned to the slides |

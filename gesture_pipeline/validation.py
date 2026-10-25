@@ -29,9 +29,12 @@ import cv2
 import numpy as np
 import pandas as pd
 
+from .tables import read_table
+
 from .config import DEFAULT_ROLE_GESTURES
 from .debug_video import _Writer
 from .frames import FrameSampler
+from .measures import STATE_GESTURES
 from .people import assign_people
 from .store import read_landmarks
 
@@ -51,7 +54,7 @@ def usable_videos(output_dir: Path) -> tuple[list[Path], list[str]]:
     for d in sorted(p for p in Path(output_dir).iterdir() if (p / "status.json").exists()):
         stages = json.loads((d / "status.json").read_text()).get("stages", {})
         done = {k for k, v in stages.items() if v.get("state") == "done"}
-        cols = pd.read_csv(d / "people.csv", nrows=0).columns if (d / "people.csv").exists() else []
+        cols = read_table(d / "people.csv", nrows=0).columns if (d / "people.csv").exists() else []
         if {"people", "events", "talk"} <= done and "role_key" in cols:
             ready.append(d)
         else:
@@ -71,7 +74,7 @@ def choose_clips(output_dir: Path, n_clips: int = 10, length_s: float = 120.0, s
     ready, stale = usable_videos(output_dir)
     for d in ready:
         meta = json.loads((d / "metadata.json").read_text()) if (d / "metadata.json").exists() else {}
-        phases = pd.read_csv(d / "phases.csv") if (d / "phases.csv").exists() else pd.DataFrame()
+        phases = read_table(d / "phases.csv") if (d / "phases.csv").exists() else pd.DataFrame()
         if phases.empty:
             phases = pd.DataFrame([{"phase": "all", "start_s": 0.0, "end_s": meta.get("duration_s", 0.0)}])
         options = []
@@ -216,7 +219,7 @@ def prepare(output_dir: Path, val_dir: Path, n_clips: int = 10, length_s: float 
         mapping = {int(k): v for k, v in json.loads((vdir / "person_map.json").read_text()).items()}
         rows = assign_people(pose, mapping)
         rows = rows[(rows.t >= c.start_s) & (rows.t <= c.end_s)]
-        people = pd.read_csv(vdir / "people.csv")
+        people = read_table(vdir / "people.csv")
         key = "role_key" if "role_key" in people.columns else "role"
         excluded = set(people[people[key].isin(["transient", "on_screen"])].person_id)
         rows = rows[~rows.pid.isin(excluded)]
@@ -340,10 +343,23 @@ def match(a: pd.DataFrame, b: pd.DataFrame, tol: float) -> tuple[int, list[int],
     return len(used_a), [i for i in a.index if i not in used_a], [j for j in b.index if j not in used_b]
 
 
+def _time_overlap(h: pd.DataFrame, p: pd.DataFrame, t0: float, t1: float, step: float = 0.1) -> tuple[float, float, float]:
+    """Seconds marked by the person, by the program, and by both, inside [t0, t1)."""
+    grid = np.arange(t0, t1, step)
+
+    def mask(df):
+        m = np.zeros(len(grid), bool)
+        for s, e in zip(df.start_s, df.end_s):
+            m |= (grid >= s) & (grid < e)
+        return m
+    mh, mp_ = mask(h), mask(p)
+    return round(mh.sum() * step, 1), round(mp_.sum() * step, 1), round((mh & mp_).sum() * step, 1)
+
+
 def _program_events(output_dir: Path, clip: pd.Series) -> pd.DataFrame:
     vdir = Path(output_dir) / clip.video_id
-    ev = pd.read_csv(vdir / "events.csv") if (vdir / "events.csv").exists() else pd.DataFrame()
-    talk = pd.read_csv(vdir / "talk.csv") if (vdir / "talk.csv").exists() else pd.DataFrame()
+    ev = read_table(vdir / "events.csv") if (vdir / "events.csv").exists() else pd.DataFrame()
+    talk = read_table(vdir / "talk.csv") if (vdir / "talk.csv").exists() else pd.DataFrame()
     parts = []
     if len(ev):
         parts.append(ev[["person_id", "gesture", "start_s", "end_s"]])
@@ -367,7 +383,7 @@ def _prf(tp: int, n_prog: int, n_human: int) -> dict:
 
 def validate(output_dir: Path, val_dir: Path, tolerance_s: float = 1.0) -> dict[str, pd.DataFrame]:
     val_dir = Path(val_dir)
-    clips = pd.read_csv(val_dir / "clips.csv")
+    clips = read_table(val_dir / "clips.csv")
     ann, coded = load_annotations(val_dir)
     if ann.empty:
         raise RuntimeError(f"No filled-in coding sheets (coding_sheet*.xlsx with rows) found in {val_dir}")
@@ -389,6 +405,30 @@ def validate(output_dir: Path, val_dir: Path, tolerance_s: float = 1.0) -> dict[
                     mism.append({"coder": coder, "clip_id": clip.clip_id, "kind": "extra (person did not mark)",
                                  **p.loc[j, ["person_id", "gesture", "start_s", "end_s"]].to_dict()})
     per_clip = pd.DataFrame(acc_rows)
+
+    # Ongoing states (facing, turned away, head down, mic, gesturing, speaking) are compared
+    # by time: a person marking one long stretch and the program reporting it in pieces
+    # should agree, not count as one match plus several "extras".
+    time_rows = []
+    for coder, a_c in ann.groupby("coder"):
+        for _, clip in clips[clips.clip_id.isin(a_c.clip_id)].iterrows():
+            human = a_c[a_c.clip_id == clip.clip_id]
+            prog = _program_events(output_dir, clip)
+            for g in sorted((STATE_GESTURES & coded[coder]) & (set(human.gesture) | set(prog.gesture))):
+                for pid in sorted(set(human[human.gesture == g].person_id) | set(prog[prog.gesture == g].person_id)):
+                    h = human[(human.gesture == g) & (human.person_id == pid)]
+                    pr = prog[(prog.gesture == g) & (prog.person_id == pid)]
+                    hs, ps, both = _time_overlap(h, pr, clip.start_s, clip.end_s)
+                    time_rows.append({"coder": coder, "clip_id": clip.clip_id, "gesture": g, "person_id": pid,
+                                      "person_s": hs, "program_s": ps, "both_s": both})
+    time_df = pd.DataFrame(time_rows, columns=["coder", "clip_id", "gesture", "person_id", "person_s",
+                                               "program_s", "both_s"])
+    if len(time_df):
+        tt = time_df.groupby("gesture")[["person_s", "program_s", "both_s"]].sum().reset_index()
+        tt["time_precision"] = (tt.both_s / tt.program_s).where(tt.program_s > 0).round(3)
+        tt["time_recall"] = (tt.both_s / tt.person_s).where(tt.person_s > 0).round(3)
+    else:
+        tt = pd.DataFrame(columns=["gesture", "person_s", "program_s", "both_s", "time_precision", "time_recall"])
     tot = per_clip.groupby("gesture")[["marked_by_person", "found_by_program", "matched"]].sum().reset_index()
     tot = pd.concat([tot, tot[["marked_by_person", "found_by_program", "matched"]].sum().to_frame().T.assign(gesture="ALL")],
                     ignore_index=True)
@@ -411,7 +451,9 @@ def validate(output_dir: Path, val_dir: Path, tolerance_s: float = 1.0) -> dict[
                 agree.append({"coder_a": c1, "coder_b": c2, "gesture": g, "clips": len(both),
                               "marks_a": len(a), "marks_b": len(b), "agreed": tp,
                               "agreement_f1": round(2 * tp / (len(a) + len(b)), 3)})
-    return {"Accuracy": accuracy, "Per clip": per_clip, "Mismatches": pd.DataFrame(mism),
+    accuracy["measure"] = accuracy.gesture.map(lambda g: "time: see 'Time agreement'" if g in STATE_GESTURES else "events")
+    return {"Accuracy": accuracy, "Time agreement": tt, "Time per person": time_df,
+            "Per clip": per_clip, "Mismatches": pd.DataFrame(mism),
             "Coder agreement": pd.DataFrame(agree), "Annotations": ann}
 
 

@@ -79,6 +79,14 @@ class VideoPaths:
         return self.root / "talk_summary.csv"
 
     @property
+    def facing_hands(self) -> Path:
+        return self.root / "facing_and_hands.csv"
+
+    @property
+    def timeline(self) -> Path:
+        return self.root / "timeline.csv"
+
+    @property
     def summary(self) -> Path:
         return self.root / "summary.csv"
 
